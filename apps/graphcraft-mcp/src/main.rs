@@ -19,6 +19,7 @@
 
 use std::io::{BufRead, Write};
 
+use graphcraft_format::SheetBody;
 use graphcraft_table::{AnyTable, ColumnTable};
 use serde_json::{json, Value};
 
@@ -196,10 +197,12 @@ fn tools_call(params: &Value) -> Result<Value, (i32, String)> {
 fn load_csv(csv: &str) -> Result<ColumnTable, (i32, String)> {
     let doc = graphcraft_format::import_csv(csv.as_bytes())
         .map_err(|e| (-32603, format!("import_csv failed: {e}")))?;
-    match doc.tables.into_iter().next() {
-        Some(AnyTable::Column(t)) => Ok(t),
-        Some(_) => Err((-32603, "expected a Column table".into())),
-        None => Err((-32603, "empty document".into())),
+    match doc.project.sheets.into_iter().next().map(|s| s.body) {
+        Some(SheetBody::Data {
+            table: AnyTable::Column(t),
+        }) => Ok(t),
+        Some(SheetBody::Data { .. }) => Err((-32603, "expected a Column data sheet".into())),
+        None => Err((-32603, "empty project".into())),
     }
 }
 

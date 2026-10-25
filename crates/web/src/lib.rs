@@ -10,6 +10,7 @@
 //! UTF-8 marshalling. The non-wasm `rlib` build is a plain-Rust
 //! shim so unit tests and the native toolchain can still link.
 
+use graphcraft_format::SheetBody;
 use graphcraft_table::{AnyTable, ColumnTable};
 use serde_json::{json, Value};
 
@@ -206,10 +207,12 @@ fn wrap<F: FnOnce() -> Result<Value, String>>(f: F) -> String {
 fn load(csv: &str) -> Result<ColumnTable, String> {
     let doc = graphcraft_format::import_csv(csv.as_bytes())
         .map_err(|e| format!("import_csv failed: {e}"))?;
-    match doc.tables.into_iter().next() {
-        Some(AnyTable::Column(t)) => Ok(t),
-        Some(_) => Err("expected a Column table".to_string()),
-        None => Err("empty document".to_string()),
+    match doc.project.sheets.into_iter().next().map(|s| s.body) {
+        Some(SheetBody::Data {
+            table: AnyTable::Column(t),
+        }) => Ok(t),
+        Some(SheetBody::Data { .. }) => Err("expected a Column data sheet".to_string()),
+        None => Err("empty project".to_string()),
     }
 }
 

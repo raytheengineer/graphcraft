@@ -13,6 +13,7 @@
 
 use std::process::ExitCode;
 
+use graphcraft_format::SheetBody;
 use graphcraft_table::{AnyTable, ColumnTable};
 
 fn main() -> ExitCode {
@@ -278,10 +279,12 @@ fn do_chi2(csv: &str) -> ExitCode {
         Ok(d) => d,
         Err(code) => return code,
     };
-    let table = match doc.tables.first() {
-        Some(AnyTable::Column(t)) => t.clone(),
+    let table = match doc.project.sheets.first().map(|s| &s.body) {
+        Some(SheetBody::Data {
+            table: AnyTable::Column(t),
+        }) => t.clone(),
         _ => {
-            return err_out("csv did not import as a Column table");
+            return err_out("csv did not import as a Column data sheet");
         }
     };
     let mut counts: Vec<Vec<u64>> = Vec::with_capacity(table.row_titles.len().max(1));
@@ -415,10 +418,12 @@ fn read_csv_doc(src: &str) -> Result<graphcraft_format::Document, ExitCode> {
 
 fn load_column_table(src: &str) -> Result<ColumnTable, ExitCode> {
     let doc = read_csv_doc(src)?;
-    match doc.tables.into_iter().next() {
-        Some(AnyTable::Column(t)) => Ok(t),
-        Some(_) => Err(err_out("expected a Column table (CSV import)")),
-        None => Err(err_out("empty document")),
+    match doc.project.sheets.into_iter().next().map(|s| s.body) {
+        Some(SheetBody::Data {
+            table: AnyTable::Column(t),
+        }) => Ok(t),
+        Some(SheetBody::Data { .. }) => Err(err_out("expected a Column table (CSV import)")),
+        None => Err(err_out("empty project")),
     }
 }
 

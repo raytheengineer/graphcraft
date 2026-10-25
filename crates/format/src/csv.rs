@@ -14,7 +14,7 @@
 
 use graphcraft_table::{Column, ColumnTable};
 
-use crate::{Document, FormatError, FORMAT_TAG, FORMAT_VERSION};
+use crate::{Document, FormatError, Project};
 
 const MAX_INPUT_BYTES: usize = 64 * 1024 * 1024;
 
@@ -64,18 +64,16 @@ pub fn import_csv(bytes: &[u8]) -> Result<Document, FormatError> {
     }
 
     let table = ColumnTable {
-        title: String::new(),
+        title: "Imported CSV".into(),
         row_titles: Vec::new(),
         columns,
     };
-    Ok(Document {
-        format: FORMAT_TAG.to_string(),
-        version: FORMAT_VERSION,
-        tables: vec![table.into()],
-        analyses: Vec::new(),
-        graphs: Vec::new(),
-        layouts: Vec::new(),
-    })
+    // A fresh CSV import becomes a single-sheet project. The CLI
+    // and web adapters already treat this document shape as a
+    // one-table carrier; the project model preserves that.
+    let mut project = Project::new("Imported CSV");
+    project.add_data_sheet("Imported CSV", table.into());
+    Ok(Document::from_project(project))
 }
 
 fn parse_rows(text: &str) -> Result<Vec<Vec<String>>, FormatError> {
@@ -143,9 +141,11 @@ mod tests {
     use super::*;
 
     fn table_of(doc: &Document) -> ColumnTable {
-        match &doc.tables[0] {
-            graphcraft_table::AnyTable::Column(c) => c.clone(),
-            other => panic!("expected Column table, got {other:?}"),
+        match &doc.project.sheets[0].body {
+            crate::SheetBody::Data {
+                table: graphcraft_table::AnyTable::Column(c),
+            } => c.clone(),
+            other => panic!("expected Column data sheet, got {other:?}"),
         }
     }
 

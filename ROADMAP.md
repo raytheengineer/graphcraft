@@ -1,14 +1,10 @@
 # GraphCraft Roadmap
 
 Status headline (2026-10-25): **Launchable prototype — M1–M7 all
-complete.** Full statistics catalogue through M6, the regression
-stack through M4, five graph types with SVG+PDF export (M5), a
-driving CLI, a perf harness, an MCP stdio server, and a WASM web
-build (M7). 71 numeric parity rows; graphs tested by structural
-invariants; the engine WASM gate green since M1. Follow-ups
-(unbalanced designs, QR-regression for ill-conditioned problems,
-higher-precision `erf`, Prism-specific extras) are tracked but
-nothing on the critical path is open.
+complete. M8 (project model) in progress.** The .graphcraft file is
+now a real project: a named list of sheets, with Data, Analysis,
+Graph, and Layout bodies to come. Full stats + regression +
+rendering surface shipped; 71 numeric parity rows green.
 
 ## Honest assessment (2026-10-25)
 
@@ -250,3 +246,17 @@ published reference values, not against Prism.
 
 ## Known numerical gaps
 _(none logged yet)_
+
+### M8 — Project model (in progress)
+- [x] M8.1 — `Project { title, sheets }` + `Sheet { id, title, body }`
+      + `SheetBody::Data`. File format bumps to v2 with a v1 →
+      project-with-data-sheets auto-migration. CSV import writes a
+      single-sheet project. All three adapters (CLI, MCP, web)
+      updated. 71 parity rows still green.
+- [ ] M8.2 — Analysis dispatch (`AnalysisKind` + registry + cached
+      results). First six: descriptives, Welch t, 1-way ANOVA,
+      Pearson, OLS, Shapiro-Wilk.
+- [ ] M8.3 — Graph dispatch for the five existing scene builders.
+- [ ] M8.4 — Source-hash staleness + recompute.
+- [ ] M8.5 — Web UI with real sidebar + detail panes.
+- [ ] M8.6 — Layout sheets (optional).
