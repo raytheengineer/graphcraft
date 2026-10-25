@@ -12,13 +12,51 @@
 
 pub mod scene_painter;
 
+/// File-system backend injected by the host app. The desktop
+/// binary wires rfd into this; the web runner will wire the
+/// browser's download/upload path (M9.8). The UI calls these
+/// methods on button click — never spawns I/O itself — so the
+/// `wasm32` build stays I/O-free.
+pub trait FileService: Send + Sync {
+    /// Prompt the user to pick a `.graphcraft` file to open.
+    /// Returns the file bytes on success, `None` on cancel, or an
+    /// error string if the pick/read failed.
+    fn pick_open_graphcraft(&self) -> Result<Option<Vec<u8>>, String>;
+
+    /// Prompt the user to save `bytes` as a `.graphcraft` file.
+    /// `default_name` is a sensible filename without extension.
+    /// Returns the written path (for the UI to display) or `None`
+    /// on cancel.
+    fn pick_save_graphcraft(
+        &self,
+        default_name: &str,
+        bytes: &[u8],
+    ) -> Result<Option<String>, String>;
+}
+
+/// Fallback used when the host didn't inject a service. Every
+/// method says "no backend" so the UI still works offline.
+pub struct NoFileService;
+impl FileService for NoFileService {
+    fn pick_open_graphcraft(&self) -> Result<Option<Vec<u8>>, String> {
+        Err("no file backend wired in this build".into())
+    }
+    fn pick_save_graphcraft(
+        &self,
+        _default_name: &str,
+        _bytes: &[u8],
+    ) -> Result<Option<String>, String> {
+        Err("no file backend wired in this build".into())
+    }
+}
+
 use egui::{Color32, ComboBox, Modal, Panel, RichText, ScrollArea, TextEdit, Ui};
 use graphcraft_analysis::{
     add_analysis_sheet, add_graph_sheet, build_graph_scene, recompute_all_stale,
     recompute_analysis_sheet, recompute_graph_sheet,
 };
 use graphcraft_format::{
-    AnalysisSpec, Document, GraphColormap, GraphErrorBars, GraphSpec, Project, SheetBody, SheetId,
+    AnalysisSpec, GraphColormap, GraphErrorBars, GraphSpec, Project, SheetBody, SheetId,
     SheetStatus,
 };
 use graphcraft_table::AnyTable;
@@ -32,6 +70,8 @@ pub struct AppState {
     /// Transient fields for the inline "configure this graph" form
     /// shown when a Placeholder graph is selected.
     configure: ConfigureGraphForm,
+    /// File backend injected by the host app.
+    files: Box<dyn FileService>,
 }
 
 #[derive(Default)]
@@ -46,12 +86,22 @@ struct ConfigureGraphForm {
 
 impl Default for AppState {
     fn default() -> Self {
+        Self::new(Box::new(NoFileService))
+    }
+}
+
+impl AppState {
+    /// Build a fresh app bound to the given file service.
+    pub fn new(files: Box<dyn FileService>) -> Self {
         Self {
             project: Project::new("Untitled project"),
             selected: None,
-            status_line: String::from("GraphCraft M9.3 — click + Data from CSV to begin."),
+            status_line: String::from(
+                "GraphCraft M9.5 — Open / Save enabled; drop a .csv on the window to import.",
+            ),
             modal: ModalKind::None,
             configure: ConfigureGraphForm::default(),
+            files,
         }
     }
 }
@@ -160,6 +210,7 @@ impl GraphKindChoice {
 impl AppState {
     /// Draw one frame into the given root UI.
     pub fn ui(&mut self, ui: &mut Ui) {
+        self.absorb_dropped_files(ui);
         Panel::top("gc-top").show(ui, |ui| self.top_bar(ui));
         Panel::left("gc-sidebar")
             .resizable(true)
@@ -168,6 +219,87 @@ impl AppState {
             .show(ui, |ui| self.sidebar(ui));
         self.detail(ui);
         self.render_modal(ui);
+    }
+
+    /// Drain egui's dropped-files queue. Any `.csv` becomes a new
+    /// Data+Placeholder-Graph pair (Column shape by default); any
+    /// `.graphcraft` replaces the open project. Unknown extensions
+    /// are ignored with a status line.
+    fn absorb_dropped_files(&mut self, ui: &mut Ui) {
+        let dropped = ui.ctx().input(|i| i.raw.dropped_files.clone());
+        if dropped.is_empty() {
+            return;
+        }
+        for f in dropped {
+            let path = f.path().to_path_buf();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.display().to_string());
+            #[cfg(not(target_arch = "wasm32"))]
+            let bytes = match f.bytes() {
+                Ok(b) => b,
+                Err(e) => {
+                    self.status_line = format!("couldn't read {name}: {e}");
+                    continue;
+                }
+            };
+            #[cfg(target_arch = "wasm32")]
+            let bytes: Vec<u8> = {
+                // Async reads on the web land in M9.8 with the
+                // eframe-web runner; skip for now.
+                let _ = f;
+                self.status_line = format!("drop of {name}: async reads come in M9.8");
+                continue;
+            };
+            let lower = name.to_lowercase();
+            if lower.ends_with(".graphcraft") || lower.ends_with(".json") {
+                self.try_load_bytes(&bytes, &name);
+            } else if lower.ends_with(".csv") || !lower.contains('.') {
+                let title = name.trim_end_matches(".csv").to_string();
+                self.import_csv_into_project(&bytes, &title);
+            } else {
+                self.status_line = format!("ignored {name}: unknown extension");
+            }
+        }
+    }
+
+    fn try_load_bytes(&mut self, bytes: &[u8], label: &str) {
+        match graphcraft_format::parse(bytes) {
+            Ok(doc) => {
+                self.project = doc.project;
+                self.selected = None;
+                self.status_line = format!("opened {label}");
+            }
+            Err(e) => self.status_line = format!("open failed: {e}"),
+        }
+    }
+
+    fn import_csv_into_project(&mut self, bytes: &[u8], title: &str) {
+        let column_table = match graphcraft_format::parse_csv_to_column_table(bytes) {
+            Ok(t) => t,
+            Err(e) => {
+                self.status_line = format!("csv import failed: {e}");
+                return;
+            }
+        };
+        let data_id = self
+            .project
+            .add_data_sheet(title.to_string(), AnyTable::Column(column_table));
+        let graph_id = graphcraft_analysis::add_graph_sheet(
+            &mut self.project,
+            data_id,
+            GraphSpec::Placeholder,
+        )
+        .ok();
+        self.selected = Some(data_id);
+        self.status_line = match graph_id {
+            Some(gid) => format!(
+                "dropped {title}: added data #{} + placeholder graph #{}",
+                data_id.0, gid.0
+            ),
+            None => format!("dropped {title}: added data #{}", data_id.0),
+        };
     }
 
     // ---------------------------------------------------------------
@@ -185,6 +317,12 @@ impl AppState {
                 self.project = Project::new("Untitled project");
                 self.selected = None;
                 self.status_line = "new project".into();
+            }
+            if ui.button("Open…").clicked() {
+                self.handle_open();
+            }
+            if ui.button("Save…").clicked() {
+                self.handle_save();
             }
             if ui.button("Recompute all").clicked() {
                 let n = recompute_all_stale(&mut self.project);
@@ -524,6 +662,31 @@ impl AppState {
     // ---------------------------------------------------------------
     // Mutations.
     // ---------------------------------------------------------------
+
+    fn handle_open(&mut self) {
+        match self.files.pick_open_graphcraft() {
+            Ok(Some(bytes)) => self.try_load_bytes(&bytes, "project"),
+            Ok(None) => {} // user cancelled; keep status quiet
+            Err(e) => self.status_line = format!("open failed: {e}"),
+        }
+    }
+
+    fn handle_save(&mut self) {
+        let doc = graphcraft_format::Document::from_project(self.project.clone());
+        let bytes = match graphcraft_format::serialize(&doc) {
+            Ok(b) => b,
+            Err(e) => {
+                self.status_line = format!("serialize failed: {e}");
+                return;
+            }
+        };
+        let default_name = sanitize_filename(&self.project.title);
+        match self.files.pick_save_graphcraft(&default_name, &bytes) {
+            Ok(Some(path)) => self.status_line = format!("saved to {path}"),
+            Ok(None) => {} // cancelled
+            Err(e) => self.status_line = format!("save failed: {e}"),
+        }
+    }
 
     fn recompute_sheet(&mut self, id: SheetId) {
         let is_analysis = matches!(
@@ -1019,12 +1182,22 @@ fn colormap_label(c: GraphColormap) -> &'static str {
     }
 }
 
-// Silence the "unused Document" import when we add Save/Open in
-// M9.5; mentioning it here keeps the module header docs honest
-// about what's wired.
-#[allow(dead_code)]
-fn _ensure_document_in_scope(doc: &Document) -> &Project {
-    &doc.project
+fn sanitize_filename(title: &str) -> String {
+    let cleaned: String = title
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if cleaned.is_empty() {
+        "project".to_string()
+    } else {
+        cleaned
+    }
 }
 
 #[cfg(test)]

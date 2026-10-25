@@ -18,6 +18,7 @@ graphcraft_engine = { path = "../../crates/engine" }
 graphcraft_ui_egui = { path = "../../crates/ui-egui" }
 eframe = { workspace = true, features = ["default_fonts", "wayland", "x11"] }
 egui = { workspace = true }
+rfd = { workspace = true }
 
 [[bin]]
 name = "graphcraft"
