@@ -1,29 +1,31 @@
 //! L6 egui UI for GraphCraft.
 //!
-//! This crate holds *all* UI: the three-pane layout (top bar,
-//! left sidebar of sheets, right detail), per-sheet detail
-//! renderers, and the modal flows for adding sheets. It is shared
-//! between the desktop binary (`apps/graphcraft`, running eframe
-//! on native windowing) and the eframe-web runner that lands in a
-//! later M9 slice (`apps/graphcraft-web`).
+//! `AppState` is the live model: the open [`Project`], the
+//! selected sheet, an optional modal, and a status line. All
+//! mutations go through the project convenience methods or the
+//! analysis / graph dispatchers.
 //!
-//! The UI holds its own [`AppState`] containing the open
-//! [`Project`] and a handful of transient fields. All mutations go
-//! through the project convenience methods or the analysis /
-//! graph dispatchers.
-//!
-//! M9.1 ships the shell and painted sidebar / detail skeletons.
-//! Analyses, graphs, legend, and the modal flows wire up in
-//! M9.2+.
+//! M9.1 painted the shell. M9.2 wires the add-sheet flows,
+//! recompute, and delete. The native-painter graph scene lands in
+//! M9.3; the eframe-web runner in M9.4; file dialogs in M9.5;
+//! in-grid data editing in M9.6; the legend registry in M9.7.
 
-use egui::{Color32, Panel, RichText, ScrollArea, Ui};
-use graphcraft_format::{Project, SheetBody, SheetId, SheetStatus};
+use egui::{Color32, ComboBox, Modal, Panel, RichText, ScrollArea, TextEdit, Ui};
+use graphcraft_analysis::{
+    add_analysis_sheet, add_graph_sheet, recompute_all_stale, recompute_analysis_sheet,
+    recompute_graph_sheet,
+};
+use graphcraft_format::{
+    AnalysisSpec, Document, GraphColormap, GraphErrorBars, GraphSpec, Project, SheetBody, SheetId,
+    SheetStatus,
+};
 
 /// Live state the UI maintains across frames.
 pub struct AppState {
     pub project: Project,
     pub selected: Option<SheetId>,
     pub status_line: String,
+    modal: ModalKind,
 }
 
 impl Default for AppState {
@@ -31,8 +33,92 @@ impl Default for AppState {
         Self {
             project: Project::new("Untitled project"),
             selected: None,
-            status_line: "GraphCraft M9.1 — eframe shell. Analyses / graphs wire up in M9.2+."
-                .into(),
+            status_line: String::from(
+                "GraphCraft M9.2 — click a + button in the sidebar to add a sheet.",
+            ),
+            modal: ModalKind::None,
+        }
+    }
+}
+
+/// One of the add-sheet modals plus a `None` resting state.
+#[derive(Default)]
+enum ModalKind {
+    #[default]
+    None,
+    AddData {
+        title: String,
+        csv: String,
+    },
+    AddAnalysis {
+        source: Option<SheetId>,
+        kind: AnalysisKindChoice,
+        a: String,
+        b: String,
+        x: String,
+        y: String,
+        col: String,
+    },
+    AddGraph {
+        source: Option<SheetId>,
+        kind: GraphKindChoice,
+        x: String,
+        y: String,
+        error_bars: GraphErrorBars,
+        colormap: GraphColormap,
+    },
+    AddLayout {
+        title: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+enum AnalysisKindChoice {
+    #[default]
+    Descriptives,
+    OneWayAnova,
+    WelchT,
+    Pearson,
+    OlsRegression,
+    ShapiroWilk,
+}
+
+impl AnalysisKindChoice {
+    const ALL: [Self; 6] = [
+        Self::Descriptives,
+        Self::OneWayAnova,
+        Self::WelchT,
+        Self::Pearson,
+        Self::OlsRegression,
+        Self::ShapiroWilk,
+    ];
+    fn label(self) -> &'static str {
+        match self {
+            Self::Descriptives => "Descriptives",
+            Self::OneWayAnova => "One-way ANOVA",
+            Self::WelchT => "Welch's t-test",
+            Self::Pearson => "Pearson correlation",
+            Self::OlsRegression => "OLS regression",
+            Self::ShapiroWilk => "Shapiro-Wilk normality",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+enum GraphKindChoice {
+    #[default]
+    Xy,
+    Column,
+    Heatmap,
+}
+
+impl GraphKindChoice {
+    const ALL: [Self; 3] = [Self::Xy, Self::Column, Self::Heatmap];
+    fn label(self) -> &'static str {
+        match self {
+            Self::Xy => "XY scatter",
+            Self::Column => "Column plot",
+            Self::Heatmap => "Heatmap",
         }
     }
 }
@@ -46,75 +132,107 @@ impl AppState {
             .default_size(260.0)
             .size_range(220.0..=360.0)
             .show(ui, |ui| self.sidebar(ui));
-        // The remaining space becomes the detail pane.
         self.detail(ui);
+        self.render_modal(ui);
     }
+
+    // ---------------------------------------------------------------
+    // Top bar.
+    // ---------------------------------------------------------------
 
     fn top_bar(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.heading("GraphCraft");
             ui.separator();
             ui.label("Project:");
-            ui.add(egui::TextEdit::singleline(&mut self.project.title).desired_width(220.0));
+            ui.add(TextEdit::singleline(&mut self.project.title).desired_width(220.0));
             ui.separator();
             if ui.button("New").clicked() {
                 self.project = Project::new("Untitled project");
                 self.selected = None;
                 self.status_line = "new project".into();
             }
-            if ui.button("Open…").clicked() {
-                self.status_line = "Open file dialog — wired in M9.3".into();
-            }
-            if ui.button("Save…").clicked() {
-                self.status_line = "Save file dialog — wired in M9.3".into();
+            if ui.button("Recompute all").clicked() {
+                let n = recompute_all_stale(&mut self.project);
+                self.status_line = format!("recomputed {n} stale sheets");
             }
             ui.add_space(16.0);
             ui.label(RichText::new(&self.status_line).weak());
         });
     }
 
+    // ---------------------------------------------------------------
+    // Sidebar.
+    // ---------------------------------------------------------------
+
     fn sidebar(&mut self, ui: &mut Ui) {
         ScrollArea::vertical().show(ui, |ui| {
             section(ui, "Data");
             self.sheet_list(ui, |b| matches!(b, SheetBody::Data { .. }));
             if ui.small_button("+ Data from CSV").clicked() {
-                self.status_line = "Add data from CSV — wired in M9.2".into();
+                self.modal = ModalKind::AddData {
+                    title: String::from("Imported data"),
+                    csv: String::from("a,b\n1,10\n2,20\n3,30\n4,40\n5,50"),
+                };
             }
 
             ui.add_space(8.0);
             section(ui, "Analyses");
             self.sheet_list(ui, |b| matches!(b, SheetBody::Analysis { .. }));
             if ui.small_button("+ New analysis").clicked() {
-                self.status_line = "Add analysis — wired in M9.2".into();
+                self.modal = ModalKind::AddAnalysis {
+                    source: self.first_data_sheet(),
+                    kind: AnalysisKindChoice::Descriptives,
+                    a: String::new(),
+                    b: String::new(),
+                    x: String::new(),
+                    y: String::new(),
+                    col: String::new(),
+                };
             }
 
             ui.add_space(8.0);
             section(ui, "Graphs");
             self.sheet_list(ui, |b| matches!(b, SheetBody::Graph { .. }));
             if ui.small_button("+ New graph").clicked() {
-                self.status_line = "Add graph — wired in M9.2".into();
+                self.modal = ModalKind::AddGraph {
+                    source: self.first_data_sheet(),
+                    kind: GraphKindChoice::Xy,
+                    x: String::new(),
+                    y: String::new(),
+                    error_bars: GraphErrorBars::Sd,
+                    colormap: GraphColormap::DivergingBlueRed,
+                };
             }
 
             ui.add_space(8.0);
             section(ui, "Layouts");
             self.sheet_list(ui, |b| matches!(b, SheetBody::Layout { .. }));
             if ui.small_button("+ New layout").clicked() {
-                self.status_line = "Add layout — wired in M9.5".into();
+                self.modal = ModalKind::AddLayout {
+                    title: String::from("Figure 1"),
+                };
             }
 
             ui.add_space(8.0);
             section(ui, "Legend");
             ui.label(
-                RichText::new("Shared dataset styling — M9.6 (allow, not force)")
+                RichText::new("Shared dataset styling — wires up in M9.7")
                     .weak()
                     .small(),
             );
         });
     }
 
+    fn first_data_sheet(&self) -> Option<SheetId> {
+        self.project
+            .sheets
+            .iter()
+            .find(|s| matches!(s.body, SheetBody::Data { .. }))
+            .map(|s| s.id)
+    }
+
     fn sheet_list(&mut self, ui: &mut Ui, mut filter: impl FnMut(&SheetBody) -> bool) {
-        // Collect first so we don't borrow project across the loop
-        // body (we need to mutate self.selected).
         let rows: Vec<(SheetId, String, SheetStatus)> = self
             .project
             .sheets
@@ -132,6 +250,10 @@ impl AppState {
             });
         }
     }
+
+    // ---------------------------------------------------------------
+    // Detail pane.
+    // ---------------------------------------------------------------
 
     fn detail(&mut self, ui: &mut Ui) {
         let Some(id) = self.selected else {
@@ -152,6 +274,10 @@ impl AppState {
             SheetBody::Graph { .. } => "graph",
             SheetBody::Layout { .. } => "layout",
         };
+        let is_derived = matches!(
+            sheet.body,
+            SheetBody::Analysis { .. } | SheetBody::Graph { .. }
+        );
         let status = self.project.sheet_status(id);
 
         ui.horizontal(|ui| {
@@ -159,11 +285,24 @@ impl AppState {
             ui.label(RichText::new(format!("({kind_label})")).weak());
             ui.label(status_dot(status));
         });
+        let mut deleted = false;
+        ui.horizontal(|ui| {
+            if is_derived && ui.button("Recompute").clicked() {
+                self.recompute_sheet(id);
+            }
+            if ui.button("Delete").clicked() {
+                self.delete_sheet(id);
+                deleted = true;
+            }
+        });
+        if deleted {
+            return;
+        }
         ui.separator();
 
         match self.project.get(id).map(|s| &s.body) {
-            Some(SheetBody::Data { .. }) => {
-                ui.label("Data sheet — grid view lands in M9.2.");
+            Some(SheetBody::Data { table }) => {
+                self.render_data_preview(ui, table);
             }
             Some(SheetBody::Analysis { result, .. }) => {
                 let text = serde_json::to_string_pretty(result).unwrap_or_default();
@@ -172,7 +311,7 @@ impl AppState {
                 });
             }
             Some(SheetBody::Graph { .. }) => {
-                ui.label("Graph scene — native egui painter lands in M9.3.");
+                ui.label("Graph rendering — native egui painter lands in M9.3.");
             }
             Some(SheetBody::Layout { items, .. }) => {
                 ui.label(format!("{} items — composer lands in M9.5.", items.len()));
@@ -180,7 +319,365 @@ impl AppState {
             None => {}
         }
     }
+
+    fn render_data_preview(&self, ui: &mut Ui, table: &graphcraft_table::AnyTable) {
+        use graphcraft_table::AnyTable;
+        let AnyTable::Column(t) = table else {
+            ui.label("(non-column data table — preview grid is in M9.6)");
+            return;
+        };
+        let n_rows = t.columns.iter().map(|c| c.values.len()).max().unwrap_or(0);
+        let shown = n_rows.min(50);
+        ScrollArea::both().show(ui, |ui| {
+            egui::Grid::new("data-grid")
+                .striped(true)
+                .spacing(egui::vec2(14.0, 2.0))
+                .show(ui, |ui| {
+                    for c in &t.columns {
+                        ui.label(RichText::new(&c.title).strong());
+                    }
+                    ui.end_row();
+                    for r in 0..shown {
+                        for c in &t.columns {
+                            let v = c.values.get(r).and_then(|v| v.as_ref());
+                            let text = match v {
+                                Some(v) => format!("{v}"),
+                                None => String::new(),
+                            };
+                            ui.monospace(text);
+                        }
+                        ui.end_row();
+                    }
+                });
+            if n_rows > shown {
+                ui.label(
+                    RichText::new(format!("… {} more rows", n_rows - shown))
+                        .weak()
+                        .small(),
+                );
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------
+    // Mutations.
+    // ---------------------------------------------------------------
+
+    fn recompute_sheet(&mut self, id: SheetId) {
+        let is_analysis = matches!(
+            self.project.get(id).map(|s| &s.body),
+            Some(SheetBody::Analysis { .. })
+        );
+        let result = if is_analysis {
+            recompute_analysis_sheet(&mut self.project, id).map_err(|e| format!("{e}"))
+        } else {
+            recompute_graph_sheet(&mut self.project, id).map_err(|e| format!("{e}"))
+        };
+        match result {
+            Ok(()) => self.status_line = format!("recomputed sheet #{}", id.0),
+            Err(e) => self.status_line = format!("recompute failed: {e}"),
+        }
+    }
+
+    fn delete_sheet(&mut self, id: SheetId) {
+        self.project.sheets.retain(|s| s.id != id);
+        if self.selected == Some(id) {
+            self.selected = None;
+        }
+        self.status_line = format!("deleted sheet #{}", id.0);
+    }
+
+    // ---------------------------------------------------------------
+    // Modal rendering.
+    // ---------------------------------------------------------------
+
+    fn render_modal(&mut self, ui: &mut Ui) {
+        let ctx = ui.ctx().clone();
+        // Take ownership so modal UI code can borrow self without
+        // conflicting with self.modal.
+        let mut m = std::mem::take(&mut self.modal);
+        let result = match &mut m {
+            ModalKind::None => ModalResult::Keep,
+            ModalKind::AddData { title, csv } => self.show_add_data_modal(&ctx, title, csv),
+            ModalKind::AddAnalysis {
+                source,
+                kind,
+                a,
+                b,
+                x,
+                y,
+                col,
+            } => self.show_add_analysis_modal(&ctx, source, kind, a, b, x, y, col),
+            ModalKind::AddGraph {
+                source,
+                kind,
+                x,
+                y,
+                error_bars,
+                colormap,
+            } => self.show_add_graph_modal(&ctx, source, kind, x, y, error_bars, colormap),
+            ModalKind::AddLayout { title } => self.show_add_layout_modal(&ctx, title),
+        };
+        match result {
+            ModalResult::Keep => self.modal = m,
+            ModalResult::Close => self.modal = ModalKind::None,
+        }
+    }
+
+    fn show_add_data_modal(
+        &mut self,
+        ctx: &egui::Context,
+        title: &mut String,
+        csv: &mut String,
+    ) -> ModalResult {
+        let mut outcome = ModalResult::Keep;
+        Modal::new("gc-add-data".into()).show(ctx, |ui| {
+            ui.set_min_width(420.0);
+            ui.heading("Add data from CSV");
+            ui.add_space(6.0);
+            ui.label("Title");
+            ui.add(TextEdit::singleline(title));
+            ui.label("CSV (first row is headers)");
+            ui.add(TextEdit::multiline(csv).desired_rows(10).code_editor());
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    outcome = ModalResult::Close;
+                }
+                if ui.button("Add").clicked() {
+                    outcome = self.commit_add_data(title, csv);
+                }
+            });
+        });
+        outcome
+    }
+
+    fn commit_add_data(&mut self, title: &str, csv: &str) -> ModalResult {
+        match graphcraft_format::import_csv(csv.as_bytes()) {
+            Ok(doc) => match doc.project.sheets.into_iter().next().map(|s| s.body) {
+                Some(SheetBody::Data { table }) => {
+                    let final_title = if title.is_empty() {
+                        "Imported CSV".to_string()
+                    } else {
+                        title.to_string()
+                    };
+                    let id = self.project.add_data_sheet(final_title.clone(), table);
+                    self.selected = Some(id);
+                    self.status_line = format!("added #{}: {}", id.0, final_title);
+                    ModalResult::Close
+                }
+                _ => {
+                    self.status_line = "CSV did not import as a Data sheet".into();
+                    ModalResult::Keep
+                }
+            },
+            Err(e) => {
+                self.status_line = format!("csv import failed: {e}");
+                ModalResult::Keep
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn show_add_analysis_modal(
+        &mut self,
+        ctx: &egui::Context,
+        source: &mut Option<SheetId>,
+        kind: &mut AnalysisKindChoice,
+        a: &mut String,
+        b: &mut String,
+        x: &mut String,
+        y: &mut String,
+        col: &mut String,
+    ) -> ModalResult {
+        let mut outcome = ModalResult::Keep;
+        Modal::new("gc-add-analysis".into()).show(ctx, |ui| {
+            ui.set_min_width(420.0);
+            ui.heading("Add analysis");
+            ui.add_space(6.0);
+            ui.label("Source data sheet");
+            source_combo(ui, "ana-source", source, &self.project);
+            ui.label("Kind");
+            ComboBox::from_id_salt("ana-kind")
+                .selected_text(kind.label())
+                .show_ui(ui, |ui| {
+                    for k in AnalysisKindChoice::ALL {
+                        ui.selectable_value(kind, k, k.label());
+                    }
+                });
+            match *kind {
+                AnalysisKindChoice::Descriptives | AnalysisKindChoice::OneWayAnova => {}
+                AnalysisKindChoice::WelchT | AnalysisKindChoice::Pearson => {
+                    labeled(ui, "Column a (name or 0-based index)", a);
+                    labeled(ui, "Column b", b);
+                }
+                AnalysisKindChoice::OlsRegression => {
+                    labeled(ui, "x (predictor)", x);
+                    labeled(ui, "y (response)", y);
+                }
+                AnalysisKindChoice::ShapiroWilk => {
+                    labeled(ui, "Column", col);
+                }
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    outcome = ModalResult::Close;
+                }
+                let can_add = source.is_some();
+                if ui.add_enabled(can_add, egui::Button::new("Add")).clicked() {
+                    if let Some(src) = *source {
+                        let spec = analysis_spec_from(*kind, a, b, x, y, col);
+                        outcome = self.commit_add_analysis(src, spec);
+                    }
+                }
+            });
+        });
+        outcome
+    }
+
+    fn commit_add_analysis(&mut self, src: SheetId, spec: AnalysisSpec) -> ModalResult {
+        match add_analysis_sheet(&mut self.project, src, spec) {
+            Ok(id) => {
+                self.selected = Some(id);
+                self.status_line = format!("added analysis #{}", id.0);
+                ModalResult::Close
+            }
+            Err(e) => {
+                self.status_line = format!("add analysis failed: {e}");
+                ModalResult::Keep
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn show_add_graph_modal(
+        &mut self,
+        ctx: &egui::Context,
+        source: &mut Option<SheetId>,
+        kind: &mut GraphKindChoice,
+        x: &mut String,
+        y: &mut String,
+        error_bars: &mut GraphErrorBars,
+        colormap: &mut GraphColormap,
+    ) -> ModalResult {
+        let mut outcome = ModalResult::Keep;
+        Modal::new("gc-add-graph".into()).show(ctx, |ui| {
+            ui.set_min_width(420.0);
+            ui.heading("Add graph");
+            ui.add_space(6.0);
+            ui.label("Source data sheet");
+            source_combo(ui, "graph-source", source, &self.project);
+            ui.label("Kind");
+            ComboBox::from_id_salt("graph-kind")
+                .selected_text(kind.label())
+                .show_ui(ui, |ui| {
+                    for k in GraphKindChoice::ALL {
+                        ui.selectable_value(kind, k, k.label());
+                    }
+                });
+            match *kind {
+                GraphKindChoice::Xy => {
+                    labeled(ui, "x column", x);
+                    labeled(ui, "y column", y);
+                }
+                GraphKindChoice::Column => {
+                    ui.label("Error bars");
+                    ComboBox::from_id_salt("graph-errorbars")
+                        .selected_text(error_bars_label(*error_bars))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(error_bars, GraphErrorBars::Sd, "SD");
+                            ui.selectable_value(error_bars, GraphErrorBars::Sem, "SEM");
+                            ui.selectable_value(error_bars, GraphErrorBars::None, "None");
+                        });
+                }
+                GraphKindChoice::Heatmap => {
+                    ui.label("Colormap");
+                    ComboBox::from_id_salt("graph-cmap")
+                        .selected_text(colormap_label(*colormap))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                colormap,
+                                GraphColormap::DivergingBlueRed,
+                                "Blue → red",
+                            );
+                            ui.selectable_value(colormap, GraphColormap::Grayscale, "Grayscale");
+                            ui.selectable_value(
+                                colormap,
+                                GraphColormap::SequentialBlue,
+                                "Sequential blue",
+                            );
+                        });
+                }
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    outcome = ModalResult::Close;
+                }
+                let can_add = source.is_some();
+                if ui.add_enabled(can_add, egui::Button::new("Add")).clicked() {
+                    if let Some(src) = *source {
+                        let spec = graph_spec_from(*kind, x, y, *error_bars, *colormap);
+                        outcome = self.commit_add_graph(src, spec);
+                    }
+                }
+            });
+        });
+        outcome
+    }
+
+    fn commit_add_graph(&mut self, src: SheetId, spec: GraphSpec) -> ModalResult {
+        match add_graph_sheet(&mut self.project, src, spec) {
+            Ok(id) => {
+                self.selected = Some(id);
+                self.status_line = format!("added graph #{}", id.0);
+                ModalResult::Close
+            }
+            Err(e) => {
+                self.status_line = format!("add graph failed: {e}");
+                ModalResult::Keep
+            }
+        }
+    }
+
+    fn show_add_layout_modal(&mut self, ctx: &egui::Context, title: &mut String) -> ModalResult {
+        let mut outcome = ModalResult::Keep;
+        Modal::new("gc-add-layout".into()).show(ctx, |ui| {
+            ui.set_min_width(360.0);
+            ui.heading("Add layout");
+            ui.add_space(6.0);
+            labeled(ui, "Title", title);
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    outcome = ModalResult::Close;
+                }
+                if ui.button("Add").clicked() {
+                    let id = self.project.add_layout_sheet(if title.is_empty() {
+                        "Figure".to_string()
+                    } else {
+                        title.clone()
+                    });
+                    self.selected = Some(id);
+                    self.status_line = format!("added layout #{}", id.0);
+                    outcome = ModalResult::Close;
+                }
+            });
+        });
+        outcome
+    }
 }
+
+#[must_use]
+enum ModalResult {
+    Keep,
+    Close,
+}
+
+// ---------------------------------------------------------------
+// Small UI primitives.
+// ---------------------------------------------------------------
 
 fn section(ui: &mut Ui, title: &str) {
     ui.label(
@@ -199,6 +696,109 @@ fn status_dot(status: SheetStatus) -> RichText {
     }
 }
 
+fn labeled(ui: &mut Ui, label: &str, value: &mut String) {
+    ui.label(label);
+    ui.add(TextEdit::singleline(value));
+}
+
+fn source_combo(ui: &mut Ui, id: &str, source: &mut Option<SheetId>, project: &Project) {
+    let data_sheets: Vec<(SheetId, String)> = project
+        .sheets
+        .iter()
+        .filter(|s| matches!(s.body, SheetBody::Data { .. }))
+        .map(|s| (s.id, s.title.clone()))
+        .collect();
+    let selected_text = source
+        .and_then(|id| data_sheets.iter().find(|(x, _)| *x == id))
+        .map(|(id, t)| format!("#{}  {}", id.0, t))
+        .unwrap_or_else(|| "(no data sheets)".to_string());
+    ComboBox::from_id_salt(id)
+        .selected_text(selected_text)
+        .show_ui(ui, |ui| {
+            for (sid, title) in &data_sheets {
+                ui.selectable_value(source, Some(*sid), format!("#{}  {}", sid.0, title));
+            }
+        });
+}
+
+fn analysis_spec_from(
+    kind: AnalysisKindChoice,
+    a: &str,
+    b: &str,
+    x: &str,
+    y: &str,
+    col: &str,
+) -> AnalysisSpec {
+    match kind {
+        AnalysisKindChoice::Descriptives => AnalysisSpec::Descriptives,
+        AnalysisKindChoice::OneWayAnova => AnalysisSpec::OneWayAnova,
+        AnalysisKindChoice::WelchT => AnalysisSpec::WelchT {
+            a: a.to_string(),
+            b: b.to_string(),
+        },
+        AnalysisKindChoice::Pearson => AnalysisSpec::Pearson {
+            a: a.to_string(),
+            b: b.to_string(),
+        },
+        AnalysisKindChoice::OlsRegression => AnalysisSpec::OlsRegression {
+            x: x.to_string(),
+            y: y.to_string(),
+        },
+        AnalysisKindChoice::ShapiroWilk => AnalysisSpec::ShapiroWilk {
+            col: col.to_string(),
+        },
+    }
+}
+
+fn graph_spec_from(
+    kind: GraphKindChoice,
+    x: &str,
+    y: &str,
+    error_bars: GraphErrorBars,
+    colormap: GraphColormap,
+) -> GraphSpec {
+    match kind {
+        GraphKindChoice::Xy => GraphSpec::Xy {
+            x: x.to_string(),
+            y: y.to_string(),
+            title: None,
+        },
+        GraphKindChoice::Column => GraphSpec::Column {
+            title: None,
+            error_bars,
+            y_title: None,
+        },
+        GraphKindChoice::Heatmap => GraphSpec::Heatmap {
+            title: None,
+            colormap,
+        },
+    }
+}
+
+fn error_bars_label(e: GraphErrorBars) -> &'static str {
+    match e {
+        GraphErrorBars::Sd => "SD",
+        GraphErrorBars::Sem => "SEM",
+        GraphErrorBars::None => "None",
+    }
+}
+
+fn colormap_label(c: GraphColormap) -> &'static str {
+    match c {
+        GraphColormap::DivergingBlueRed => "Blue → red",
+        GraphColormap::Grayscale => "Grayscale",
+        GraphColormap::SequentialBlue => "Sequential blue",
+    }
+}
+
+// Silence the "unused Document" import when we add Save/Open in
+// M9.5; mentioning it here keeps the module header docs honest
+// about what's wired.
+#[allow(dead_code)]
+fn _ensure_document_in_scope(doc: &Document) -> &Project {
+    &doc.project
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,5 +808,22 @@ mod tests {
         let s = AppState::default();
         assert_eq!(s.project.title, "Untitled project");
         assert!(s.selected.is_none());
+    }
+
+    #[test]
+    fn commit_add_data_appends_sheet() {
+        let mut s = AppState::default();
+        let _ = s.commit_add_data("test", "a,b\n1,2\n3,4\n");
+        assert_eq!(s.project.data_sheet_count(), 1);
+        assert!(s.selected.is_some());
+    }
+
+    #[test]
+    fn commit_add_analysis_requires_source() {
+        let mut s = AppState::default();
+        let _ = s.commit_add_data("d", "x,y\n1,2\n2,4\n3,6\n");
+        let src = s.first_data_sheet().unwrap();
+        let _ = s.commit_add_analysis(src, AnalysisSpec::Descriptives);
+        assert_eq!(s.project.analysis_sheet_count(), 1);
     }
 }
