@@ -58,3 +58,8 @@ chi2-indep,contingency:20;30||40;10,df,1.0,1e-15,closed-form:(r-1)(c-1)
 fisher-exact,contingency:4;0||0;4,p_two_sided,0.02857142857142857,1e-13,fisher-1922:lady-tasting-tea
 fisher-exact,contingency:4;0||0;4,p_one_sided,0.014285714285714285,1e-13,fisher-1922:lady-tasting-tea
 fisher-exact,contingency:3;1||1;3,odds_ratio,9.0,1e-13,closed-form:a*d/(b*c)
+roc,roc:0.1/0|0.2/0|0.3/0|0.7/1|0.8/1|0.9/1,auc,1.0,1e-14,closed-form:perfect-separation
+roc,roc:0.9/0|0.8/0|0.1/1|0.2/1,auc,0.0,1e-14,closed-form:complete-inversion
+roc,roc:0.8/1|0.6/1|0.9/0|0.7/0|0.5/0,auc,0.5,1e-14,closed-form:U_normalised
+bland-altman,inline2:1;2;3;4;5|1;3;4;6;7,bias,1.2,1e-13,closed-form:mean(y-x)
+bland-altman,inline2:1;2;3;4;5|1;3;4;6;7,sd_diff,0.8366600265340756,1e-13,closed-form:sqrt(0.7)

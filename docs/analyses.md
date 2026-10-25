@@ -47,6 +47,8 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | Spearman rank correlation     | `spearman`           | `column_spearman`      | r = 1 on monotone input |
 | Chi-squared independence      | `chi_squared_independence` | `table_chi_squared` | Closed form 2×2 (X² = 50/3) |
 | Fisher's exact (2×2)          | `fisher_exact_2x2`   | `table_fisher_exact`   | Fisher 1922 lady-tasting-tea (p = 2/70) |
+| ROC analysis                  | `roc`                | — | Hand-counted small case; perfect-sep AUC |
+| Bland-Altman agreement        | `bland_altman`       | — | Closed-form bias and SD |
 
 ## Descriptive statistics (M3.0)
 
@@ -572,3 +574,55 @@ Deferred to M6.1+:
   Yates" opt-in).
 - Fisher's exact for `r × c` beyond 2×2 (uses Mehta-Patel-style
   network algorithm).
+
+## ROC and Bland–Altman (M6.2)
+
+### ROC
+
+`graphcraft_stats::roc(&[(score, label)])` builds a Receiver
+Operating Characteristic curve from `(score, bool)` pairs with
+`true` for positives, and returns:
+
+- `auc` via the normalised Mann-Whitney U count (ties contribute
+  0.5), equivalent to the probability-of-correct-ranking.
+- `se_auc` by Hanley & McNeil (1982).
+- 95% CI on AUC: `AUC ± 1.96 · SE(AUC)` clamped to `[0, 1]`.
+- `curve` as `(FPR, TPR)` step points from `(0, 0)` to `(1, 1)`.
+- Two-sided p against `AUC = 0.5` from the null-SE
+  Mann-Whitney-equivalent z.
+
+Behaviour references (public):
+- Hanley, J. A. & McNeil, B. J. (1982) *Radiology* 143, 29–36.
+- Mason, S. J. & Graham, N. E. (2002) *QJRMS* 128, 2145–2166.
+
+### Bland–Altman
+
+`graphcraft_stats::bland_altman(a, b)` computes `d = b − a` and
+reports:
+
+- `bias = mean(d)`;
+- `sd_diff = SD(d)`;
+- 95% limits of agreement `bias ± 1.96 · sd_diff`;
+- 95% CI on the bias `bias ± 1.96 · (sd_diff / √n)`;
+- per-point `(mean(a, b), d)` for the Bland-Altman plot.
+
+Degenerate case: identical measurements give `sd_diff = 0` and
+limits that collapse onto the bias — not an error, just the honest
+summary.
+
+Behaviour reference (public): Bland, J. M. & Altman, D. G. (1986)
+*The Lancet* 327, 307–310.
+
+### Parity rows (new, 5 total)
+
+- `roc` AUC = 1 on perfectly separable data.
+- `roc` AUC = 0 on complete inversion.
+- `roc` hand-counted AUC = 0.5 on a 2-pos / 3-neg case.
+- `bland-altman` bias = 1.2 and `sd_diff = √0.7` on
+  `[1,2,3,4,5]` vs `[1,3,4,6,7]`.
+
+Deferred to M6.2+:
+- Partial AUC (over a FPR interval).
+- Paired-ROC comparison (DeLong 1988).
+- Prism's Bland-Altman plot overlay (uses the scene builder,
+  shipping with the heatmap in M6.5).

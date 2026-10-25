@@ -1,9 +1,9 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M3–M5 complete, M6.1 shipped.**
-Statistics, regression, four graph types with SVG+PDF export, and
-now correlation + chi-squared/Fisher contingency tests. 54 numeric
-parity rows; graphs tested by structural invariants.
+Status headline (2026-10-25): **M3–M5 complete, M6.1 + M6.2 shipped.**
+Statistics, regression, four graph types with SVG+PDF export,
+correlation, contingency, ROC, and Bland-Altman. 59 numeric parity
+rows; graphs tested by structural invariants.
 
 ## Honest assessment (2026-10-25)
 
@@ -152,7 +152,11 @@ for everything after.
       rule). Analysis wrappers `column_pearson`, `column_spearman`,
       `table_chi_squared`, `table_fisher_exact`. Eight new
       closed-form parity rows.
-- [ ] M6.2 — ROC analysis + Bland-Altman
+- [x] M6.2 — ROC analysis (AUC via normalised Mann-Whitney U,
+      Hanley-McNeil SE, CI95, step curve, null-z p); Bland-Altman
+      agreement (bias, SD of differences, limits of agreement, CI
+      on bias, (mean, diff) points). Five new closed-form parity
+      rows.
 - [ ] M6.3 — 2-way ANOVA
 - [ ] M6.4 — Survival statistics (log-rank, hazard ratio)
 - [ ] M6.5 — Heatmap graph type + Shapiro-Wilk normality
@@ -188,6 +192,8 @@ published reference values, not against Prism.
 | pearson / spearman | Closed form `r = 6/√60`, `r = 1` on exact / monotone | passing | 1e-13 |
 | chi2-indep | Closed form 2×2 `X² = 50/3`, `df = 1` | passing | 1e-13 |
 | fisher-exact | Fisher 1922 lady-tasting-tea `p = 2/70`; OR = 9 | passing | 1e-13 |
+| roc | AUC = 1 / 0 / 0.5 on perfect / inverted / hand-counted case | passing | 1e-14 |
+| bland-altman | Closed-form bias = 1.2, SD = √0.7 | passing | 1e-13 |
 
 ## Known numerical gaps
 _(none logged yet)_

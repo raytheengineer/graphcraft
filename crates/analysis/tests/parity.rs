@@ -181,6 +181,24 @@ fn fit_library(id: &str, xs: &[f64], ys: &[f64]) -> graphcraft_regression::LmFit
     .unwrap_or_else(|e| panic!("library fit {id} failed: {e:?}"))
 }
 
+fn load_roc(spec: &str) -> Vec<(f64, bool)> {
+    // `roc:score,label|score,label|...` — label is 0 or 1.
+    let payload = spec
+        .strip_prefix("roc:")
+        .unwrap_or_else(|| panic!("not a roc spec: {spec}"));
+    payload
+        .split('|')
+        .map(|p| {
+            let (s, l) = p
+                .split_once('/')
+                .unwrap_or_else(|| panic!("roc pair needs slash: {p}"));
+            let score: f64 = s.parse().unwrap();
+            let label = l != "0";
+            (score, label)
+        })
+        .collect()
+}
+
 fn load_contingency(spec: &str) -> Vec<Vec<u64>> {
     // `contingency:a;b;c||d;e;f||...` — rows separated by `||`,
     // cells by `;`.
@@ -413,6 +431,27 @@ fn run(row: &Row) -> f64 {
             "p" => r.p,
             "df" => r.df,
             other => panic!("unknown kruskal-wallis statistic: {other:?}"),
+        };
+    }
+    if row.analysis == "roc" {
+        let scored = load_roc(&row.dataset);
+        let r = graphcraft_stats::roc(&scored).unwrap();
+        return match row.statistic.as_str() {
+            "auc" => r.auc,
+            "se_auc" => r.se_auc,
+            "p" => r.p_two_sided,
+            other => panic!("unknown roc statistic: {other:?}"),
+        };
+    }
+    if row.analysis == "bland-altman" {
+        let (xs, ys) = load_dataset_pair(&row.dataset);
+        let r = graphcraft_stats::bland_altman(&xs, &ys).unwrap();
+        return match row.statistic.as_str() {
+            "bias" => r.bias,
+            "sd_diff" => r.sd_diff,
+            "lower_loa" => r.lower_loa,
+            "upper_loa" => r.upper_loa,
+            other => panic!("unknown bland-altman statistic: {other:?}"),
         };
     }
     if row.analysis == "pearson" {

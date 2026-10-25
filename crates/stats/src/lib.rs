@@ -3,6 +3,7 @@
 //! Behaviour reference is public documentation only; see `AGENTS.md`.
 
 pub mod anova;
+pub mod bland_altman;
 pub mod contingency;
 pub mod correlation;
 pub mod descriptive;
@@ -10,9 +11,11 @@ pub mod distributions;
 pub mod mcomp;
 pub mod nonpar;
 pub mod quadrature;
+pub mod roc;
 pub mod special;
 pub mod ttest;
 pub use anova::{dunnett, one_way_anova, tukey_hsd, OneWayAnova, PairwiseComparison};
+pub use bland_altman::{bland_altman, BlandAltman};
 pub use contingency::{chi_squared_independence, fisher_exact_2x2, ChiSquaredTest, FisherExact};
 pub use correlation::{pearson, spearman, Correlation};
 pub use descriptive::Descriptives;
@@ -22,6 +25,7 @@ pub use nonpar::{
     dunns_test, kruskal_wallis, mann_whitney, wilcoxon_signed_rank, DunnPair, KruskalWallis,
     MannWhitney, WilcoxonSignedRank,
 };
+pub use roc::{roc, RocAnalysis};
 pub use ttest::{
     one_sample_t, paired_t, unpaired_t, OneSampleT, PairedT, TwoSampleKind, TwoSampleT,
 };
