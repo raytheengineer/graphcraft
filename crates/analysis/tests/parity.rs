@@ -169,6 +169,18 @@ fn run(row: &Row) -> f64 {
         let x = *p.get("x").expect("normal-cdf needs x");
         return graphcraft_stats::distributions::normal::big_phi(x);
     }
+    if row.analysis == "dunnett-one-sided-cdf" || row.analysis == "dunnett-two-sided-cdf" {
+        let p = parse_params(&row.dataset);
+        let d = *p.get("d").expect("dunnett needs d");
+        let m = *p.get("m").expect("dunnett needs m") as usize;
+        let df = *p.get("df").expect("dunnett needs df");
+        let side = if row.analysis == "dunnett-one-sided-cdf" {
+            graphcraft_stats::DunnettSide::OneSided
+        } else {
+            graphcraft_stats::DunnettSide::TwoSided
+        };
+        return graphcraft_stats::distributions::dunnett::dunnett_cdf(d, m, df, side).unwrap();
+    }
     if row.analysis == "studentized-range-cdf" {
         let p = parse_params(&row.dataset);
         let q = *p.get("q").expect("studentized-range-cdf needs q");

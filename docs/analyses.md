@@ -32,6 +32,8 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | Normal distribution           | `distributions::normal::{phi, big_phi, phi_inv, erf}` | — | A&S 7.1.26 (≈1.5·10⁻⁷) |
 | Studentized-range distribution | `distributions::studentized_range::{q_cdf, q_sf, q_inv_cdf}` | — | `F(q;2,∞) = 2·Φ(q/√2)−1`; Harter (1960) tabled |
 | Tukey HSD post-hoc            | `tukey_hsd`          | `column_tukey_hsd`     | Verified via q-dist parity |
+| Dunnett distribution (ρ=1/2) | `distributions::dunnett::{dunnett_cdf, dunnett_inv_cdf}` | — | Dunnett (1964) tabled crit values |
+| Dunnett many-to-one post-hoc  | `dunnett`            | `column_dunnett`       | Verified via Dunnett-dist parity |
 
 ## Descriptive statistics (M3.0)
 
@@ -256,7 +258,53 @@ Parity rows (new):
   `0.95` at 2·10⁻³.
 
 Deferred to M3.3b+:
-- Dunnett's one- and two-sided tests (needs equi-correlated
-  multivariate t; next slice M3.3b.2).
-- A higher-precision `erf` to tighten the normal and q parity
-  rows below ~10⁻⁷ when a downstream test needs it.
+- A higher-precision `erf` to tighten the normal / q / Dunnett
+  parity rows below ~10⁻⁷ when a downstream test needs it.
+
+## Dunnett many-to-one post-hoc (M3.3b.2)
+
+`graphcraft_stats::distributions::dunnett` ships Dunnett's
+equi-correlated max-|T| and max-T distributions for a balanced
+one-way design with correlation `ρ = 1/2`:
+
+- `dunnett_cdf(d, m, df, side)` → `P(max_i T_i < d)` (one-sided) or
+  `P(max_i |T_i| < d)` (two-sided), with `m = k − 1` treatment
+  groups and real `df > 0` (or `df = ∞`).
+- `dunnett_inv_cdf(p, m, df, side)` → critical value by bisection.
+
+The ρ = 1/2 structure collapses the joint CDF to a single
+conditioning integral over `W = √(χ²_ν/ν)` and an inner integral
+over the shared normal factor. Both are 32-point Gauss–Legendre.
+
+`graphcraft_stats::anova::dunnett(anova, control_idx, side)` runs
+the many-to-one post-hoc on top of a one-way ANOVA, returning one
+`PairwiseComparison` per non-control group. For the balanced design
+the correlations are exactly `1/2`; for unbalanced designs the
+reported p-values are in the usual conservative direction and a
+full unbalanced-Dunnett is tracked as a follow-up.
+
+Analysis API: `column_dunnett(table, control_col, side)` maps the
+original column index to the ANOVA index (skipping empty columns)
+and runs the test.
+
+Behaviour references (public):
+- Dunnett, C. W. (1955) "A multiple comparison procedure for
+  comparing several treatments with a control", JASA 50, 1096–1121.
+- Dunnett, C. W. (1964) "New tables for multiple comparisons with
+  a control", Biometrics 20, 482–491 (tabled critical values used
+  as parity oracle, not for implementation).
+
+Parity rows (new):
+- `dunnett-one-sided-cdf` closed form at `(d = Φ⁻¹(0.95), m = 1,
+  df = ∞)` → `0.95` at 1·10⁻⁵.
+- `dunnett-one-sided-cdf` at Dunnett's `d_{0.05}(2, ∞) = 1.916` →
+  `0.95` at 2·10⁻³.
+- `dunnett-two-sided-cdf` closed form at `(d = Φ⁻¹(0.975), m = 1,
+  df = ∞)` → `0.95` at 1·10⁻⁵.
+- `dunnett-two-sided-cdf` at Dunnett's `d_{0.05}(2, ∞) = 2.212` →
+  `0.95` at 2·10⁻³.
+
+Deferred to M3.3b+:
+- Full unbalanced Dunnett (Hochberg or Hsu generalisation).
+- Hsu's MCB (multiple comparisons with the best) and other
+  Prism-documented post-hocs; scheduled with the remainder of M6.

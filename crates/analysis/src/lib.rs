@@ -8,8 +8,8 @@
 
 use graphcraft_numeric::NumericError;
 use graphcraft_stats::{
-    one_sample_t, one_way_anova, paired_t, tukey_hsd, unpaired_t, Descriptives, OneSampleT,
-    OneWayAnova, PairedT, PairwiseComparison, TwoSampleKind, TwoSampleT,
+    dunnett, one_sample_t, one_way_anova, paired_t, tukey_hsd, unpaired_t, Descriptives,
+    DunnettSide, OneSampleT, OneWayAnova, PairedT, PairwiseComparison, TwoSampleKind, TwoSampleT,
 };
 use graphcraft_table::ColumnTable;
 
@@ -99,6 +99,40 @@ pub fn column_one_way_anova(table: &ColumnTable) -> Result<OneWayAnova, NumericE
         }
     }
     one_way_anova(&groups)
+}
+
+/// Dunnett many-to-one post-hoc on top of a one-way ANOVA of a
+/// Column table. `control_col` indexes the control column in the
+/// original table order; empty columns are skipped before ANOVA so
+/// the control must itself be non-empty.
+pub fn column_dunnett(
+    table: &ColumnTable,
+    control_col: usize,
+    side: DunnettSide,
+) -> Result<Vec<PairwiseComparison>, NumericError> {
+    // Preserve column order; count non-empty columns up to the
+    // chosen control so the ANOVA index matches it.
+    let mut anova_index_for_col = Vec::new();
+    for (i, _) in table.columns.iter().enumerate() {
+        let g: Vec<f64> = table.group_values(i).collect();
+        if !g.is_empty() {
+            anova_index_for_col.push(Some(i));
+        } else {
+            anova_index_for_col.push(None);
+        }
+    }
+    let mapped_control = anova_index_for_col
+        .iter()
+        .take(control_col + 1)
+        .filter(|m| m.is_some())
+        .count()
+        .checked_sub(1)
+        .ok_or(NumericError::TooFewValues {
+            required: 1,
+            got: 0,
+        })?;
+    let anova = column_one_way_anova(table)?;
+    dunnett(&anova, mapped_control, side)
 }
 
 /// Tukey HSD post-hoc on top of a one-way ANOVA of a Column table.

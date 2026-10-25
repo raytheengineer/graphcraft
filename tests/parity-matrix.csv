@@ -22,3 +22,7 @@ normal-cdf,x=1.959963984540054,phi,0.975,2e-7,AS-7.1.26:Phi(Phi_inv(0.975))=0.97
 studentized-range-cdf,q=2.7718619194388;k=2;df=inf,p,0.95,1e-5,closed-form:F(q;2;inf)=2*Phi(q/sqrt(2))-1
 studentized-range-cdf,q=3.3145;k=3;df=inf,p,0.95,2e-3,harter-1960:q_0.05(3;inf)
 studentized-range-cdf,q=3.877;k=3;df=10,p,0.95,2e-3,harter-1960:q_0.05(3;10)
+dunnett-one-sided-cdf,d=1.6448536269514722;m=1;df=inf,p,0.95,1e-5,closed-form:Phi(z_0.95)
+dunnett-one-sided-cdf,d=1.916;m=2;df=inf,p,0.95,2e-3,dunnett-1964:d_0.05(2;inf)
+dunnett-two-sided-cdf,d=1.959963984540054;m=1;df=inf,p,0.95,1e-5,closed-form:2*Phi(z_0.975)-1
+dunnett-two-sided-cdf,d=2.212;m=2;df=inf,p,0.95,2e-3,dunnett-1964:d_0.05(2;inf;two-sided)

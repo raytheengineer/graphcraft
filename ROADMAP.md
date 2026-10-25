@@ -89,8 +89,11 @@ for everything after.
       Tukey HSD (Tukey-Kramer form) with `tukey_hsd` /
       `column_tukey_hsd`. Five new parity rows (two normal, one
       closed-form q, two Harter 1960 tabled)
-- [ ] M3.3b.2 — Dunnett's test (equi-correlated multivariate t for
-      balanced designs)
+- [x] M3.3b.2 — Dunnett distribution for balanced designs
+      (equi-correlated multivariate t with ρ=1/2, one- and
+      two-sided max). `dunnett_cdf` / `dunnett_inv_cdf`; `dunnett`
+      post-hoc on OneWayAnova; `column_dunnett` wrapper. Four new
+      parity rows (two closed form, two Dunnett 1964 tabled)
 - [ ] M3.4 — Non-parametric: Mann-Whitney, Wilcoxon, Kruskal-Wallis,
       Dunn's post-hoc
 ### M4 — Linear + nonlinear regression (LM + published model library)
@@ -116,6 +119,8 @@ published reference values, not against Prism.
 | sidak | Closed form `1−(1−p)^m` | passing | 1e-15 |
 | normal-cdf | Φ(0)=0.5, Φ(1.959964)=0.975 | passing | 2e-7 (A&S bound) |
 | studentized-range-cdf | `F(q;2,∞) = 2·Φ(q/√2)−1`; Harter 1960 crit values at (3,∞) and (3,10) | passing | 1e-5 closed / 2e-3 tabled |
+| dunnett-one-sided-cdf | `m=1`: Φ(z); Dunnett 1964 crit value at (m=2, ν=∞) | passing | 1e-5 closed / 2e-3 tabled |
+| dunnett-two-sided-cdf | `m=1`: 2Φ−1; Dunnett 1964 crit value at (m=2, ν=∞) | passing | 1e-5 closed / 2e-3 tabled |
 
 ## Known numerical gaps
 _(none logged yet)_

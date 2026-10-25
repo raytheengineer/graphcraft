@@ -12,6 +12,7 @@
 use graphcraft_numeric::NumericError;
 
 use crate::descriptive::Descriptives;
+use crate::distributions::dunnett::{dunnett_cdf, DunnettSide};
 use crate::distributions::f::f_sf;
 use crate::distributions::studentized_range::q_sf;
 
@@ -168,6 +169,69 @@ pub fn tukey_hsd(a: &OneWayAnova) -> Result<Vec<PairwiseComparison>, NumericErro
     Ok(out)
 }
 
+/// Dunnett's many-to-one post-hoc on top of a one-way ANOVA.
+/// `control_idx` is the group index of the control (0-based in the
+/// ANOVA order). Returns one comparison per non-control group.
+///
+/// For each treatment `i ≠ control`:
+/// - `t = (ȳ_i − ȳ_c) / √(MS_within · (1/n_i + 1/n_c))`
+/// - `p_adj = 1 − F_D(|t|; m, df_within, side)` for `TwoSided`;
+///   `1 − F_D(t; m, df_within, OneSided)` for `OneSided`, where
+///   `m` is the number of treatment groups (`k − 1`) and `F_D` is
+///   the Dunnett equi-correlated max-T CDF.
+///
+/// The equi-correlated form assumes balanced per-group sample size;
+/// for unbalanced designs the correlations drift from `1/2` and the
+/// p-values are conservative in the common direction. A full
+/// unbalanced-Dunnett implementation is tracked for a later slice.
+pub fn dunnett(
+    a: &OneWayAnova,
+    control_idx: usize,
+    side: DunnettSide,
+) -> Result<Vec<PairwiseComparison>, NumericError> {
+    if a.k < 2 {
+        return Err(NumericError::TooFewValues {
+            required: 2,
+            got: a.k,
+        });
+    }
+    if control_idx >= a.k {
+        return Err(NumericError::TooFewValues {
+            required: control_idx + 1,
+            got: a.k,
+        });
+    }
+    if !a.ms_within.is_finite() || a.ms_within <= 0.0 {
+        return Err(NumericError::DivisionByZero);
+    }
+    let m = a.k - 1;
+    let n_c = a.group_ns[control_idx] as f64;
+    let mean_c = a.group_means[control_idx];
+    let mut out = Vec::with_capacity(m);
+    for i in 0..a.k {
+        if i == control_idx {
+            continue;
+        }
+        let n_i = a.group_ns[i] as f64;
+        let se = (a.ms_within * (1.0 / n_i + 1.0 / n_c)).sqrt();
+        let mean_diff = a.group_means[i] - mean_c;
+        let t_stat = mean_diff / se;
+        let p_adj = match side {
+            DunnettSide::OneSided => 1.0 - dunnett_cdf(t_stat, m, a.df_within, side)?,
+            DunnettSide::TwoSided => 1.0 - dunnett_cdf(t_stat.abs(), m, a.df_within, side)?,
+        };
+        out.push(PairwiseComparison {
+            i: control_idx,
+            j: i,
+            mean_diff,
+            se_diff: se,
+            stat: t_stat,
+            p_adj,
+        });
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,6 +282,23 @@ mod tests {
         assert!((p_ac.mean_diff - 6.0).abs() < 1e-13);
         // q = 6/sqrt(1/3) = 6*sqrt(3) ≈ 10.3923.
         assert!((p_ac.stat - 6.0 * 3.0_f64.sqrt()).abs() < 1e-13);
+    }
+
+    #[test]
+    fn dunnett_three_groups_matches_tukey_sign() {
+        let a = vec![1.0, 2.0, 3.0];
+        let b = vec![4.0, 5.0, 6.0];
+        let c = vec![7.0, 8.0, 9.0];
+        let anova = one_way_anova(&[a, b, c]).unwrap();
+        let out = dunnett(&anova, 0, DunnettSide::TwoSided).unwrap();
+        assert_eq!(out.len(), 2);
+        for p in &out {
+            assert_eq!(p.i, 0);
+            assert!(p.p_adj < 0.05, "p={}", p.p_adj);
+        }
+        // mean_diff(A→B) = 3, mean_diff(A→C) = 6.
+        let diff_ac = out.iter().find(|p| p.j == 2).unwrap().mean_diff;
+        assert!((diff_ac - 6.0).abs() < 1e-13);
     }
 
     #[test]
