@@ -7,7 +7,10 @@
 //! Column table.
 
 use graphcraft_numeric::NumericError;
-use graphcraft_stats::{one_sample_t, Descriptives, OneSampleT};
+use graphcraft_stats::{
+    one_sample_t, paired_t, unpaired_t, Descriptives, OneSampleT, PairedT, TwoSampleKind,
+    TwoSampleT,
+};
 use graphcraft_table::ColumnTable;
 
 /// Per-group one-sample t-test result on a Column table.
@@ -36,6 +39,53 @@ pub fn column_one_sample_t(
         });
     }
     Ok(out)
+}
+
+/// Run an unpaired two-sample t-test on two columns of a Column table
+/// by index. The direction is `col_b − col_a`.
+pub fn column_unpaired_t(
+    table: &ColumnTable,
+    col_a: usize,
+    col_b: usize,
+    kind: TwoSampleKind,
+) -> Result<TwoSampleT, NumericError> {
+    if col_a >= table.columns.len() || col_b >= table.columns.len() {
+        return Err(NumericError::TooFewValues {
+            required: col_a.max(col_b) + 1,
+            got: table.columns.len(),
+        });
+    }
+    let xs: Vec<f64> = table.group_values(col_a).collect();
+    let ys: Vec<f64> = table.group_values(col_b).collect();
+    unpaired_t(&xs, &ys, kind)
+}
+
+/// Run a paired t-test on two columns of a Column table, pairing by
+/// row index. Rows where either column is missing are dropped.
+/// Direction is `col_b − col_a`.
+pub fn column_paired_t(
+    table: &ColumnTable,
+    col_a: usize,
+    col_b: usize,
+) -> Result<PairedT, NumericError> {
+    if col_a >= table.columns.len() || col_b >= table.columns.len() {
+        return Err(NumericError::TooFewValues {
+            required: col_a.max(col_b) + 1,
+            got: table.columns.len(),
+        });
+    }
+    let a = &table.columns[col_a].values;
+    let b = &table.columns[col_b].values;
+    let rows = a.len().min(b.len());
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+    for i in 0..rows {
+        if let (Some(x), Some(y)) = (a[i], b[i]) {
+            xs.push(x);
+            ys.push(y);
+        }
+    }
+    paired_t(&xs, &ys)
 }
 
 /// Descriptive statistics for one group (one column) of a Column

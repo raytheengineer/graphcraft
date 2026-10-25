@@ -22,6 +22,9 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | 95% CI of the mean            | `Descriptives::ci_mean(α)` | (via descriptives) | — |
 | Student-t distribution        | `distributions::t::{t_cdf, t_sf, t_inv_cdf}` | — | Cauchy quantile at df=1, p=0.975 |
 | One-sample t-test             | `one_sample_t`       | `column_one_sample_t`  | — |
+| Paired t-test                 | `paired_t`           | `column_paired_t`      | Closed form: `sqrt(18)` |
+| Welch's unpaired t-test       | `unpaired_t(Welch)`  | `column_unpaired_t`    | Closed form: `9/sqrt(11/6)`, `df = 484/137` |
+| Pooled unpaired t-test        | `unpaired_t(Pooled)` | `column_unpaired_t`    | Closed form: `9/sqrt(8/5)`, `df = 6` |
 
 ## Descriptive statistics (M3.0)
 
@@ -96,6 +99,48 @@ Parity rows:
   Wikipedia article.
 
 Deferred to M3.1+:
-- Welch and paired two-sample t (M3.2).
 - F-distribution — same incomplete-beta backbone — lands with ANOVA
   in M3.3.
+
+## Two-sample t-tests (M3.2)
+
+`graphcraft_stats::ttest` now ships three two-sample flavours.
+
+- `paired_t(xs, ys)` — pairs by index, then runs the one-sample t on
+  the differences `ys[i] − xs[i]` against `μ = 0`. `Err` on length
+  mismatch, `n < 2`, zero variance of differences, or non-finite
+  values.
+- `unpaired_t(xs, ys, TwoSampleKind::Welch)` — **Prism's documented
+  default** for unpaired comparisons. Standard error of the mean
+  difference is `√(s₁²/n₁ + s₂²/n₂)`; df uses the Welch–Satterthwaite
+  approximation
+  `df = (s₁²/n₁ + s₂²/n₂)² / ((s₁²/n₁)²/(n₁−1) + (s₂²/n₂)²/(n₂−1))`,
+  giving a real-valued df. The Student-t CDF already accepts real
+  `df`, so no extra plumbing was needed.
+- `unpaired_t(xs, ys, TwoSampleKind::Pooled)` — classic equal-variance
+  Student form; pooled variance
+  `s_p² = ((n₁−1)s₁² + (n₂−1)s₂²) / (n₁+n₂−2)` and
+  `df = n₁+n₂−2`.
+
+All three set `mean_diff = mean(ys) − mean(xs)` so a positive sign
+means "second group is larger".
+
+Analysis-layer wrappers on `ColumnTable`:
+- `column_unpaired_t(table, col_a, col_b, kind)` — picks the two
+  columns by index, drops missings per column.
+- `column_paired_t(table, col_a, col_b)` — pairs by row index, drops
+  rows where either column is missing.
+
+Behaviour references (public):
+- Welch, B. L. (1947) *Biometrika* 34, 28–35.
+- Satterthwaite, F. E. (1946) *Biometrics* 2, 110–114.
+- Student (1908) *Biometrika* 6, 1–25.
+
+Parity rows (closed-form, 1e-13):
+- `welch-t` on `[1,2,3,4,5]` vs `[10,12,14]` → `t = 9/√(11/6)`,
+  `df = 484/137`.
+- `pooled-t` on the same pair → `t = 9/√(8/5)`, `df = 6`.
+- `paired-t` on `[1,2,3,4,5]` vs `[2,4,6,8,10]` → `t = √18`, `df = 4`.
+
+Deferred to M3.2+:
+- One-way ANOVA and the F-distribution (M3.3).

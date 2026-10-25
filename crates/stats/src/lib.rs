@@ -7,4 +7,6 @@ pub mod distributions;
 pub mod special;
 pub mod ttest;
 pub use descriptive::Descriptives;
-pub use ttest::{one_sample_t, OneSampleT};
+pub use ttest::{
+    one_sample_t, paired_t, unpaired_t, OneSampleT, PairedT, TwoSampleKind, TwoSampleT,
+};

@@ -4,3 +4,9 @@ sum,inline:1;2;3;4;5,sum,15.0,1e-15,textbook:arithmetic-sum
 mean,nist-univar:tests/data/nist/Lew.dat,mean,-177.435000000000,1e-13,https://itl.nist.gov/div898/strd/univ/lew.html
 descriptives,nist-univar:tests/data/nist/Lew.dat,sd,277.332168044316,1e-13,https://itl.nist.gov/div898/strd/univ/lew.html
 t-quantile,df=1;p=0.975,qt,12.706204736432095,1e-10,https://en.wikipedia.org/wiki/Student%27s_t-distribution
+welch-t,inline2:1;2;3;4;5|10;12;14,t,6.646940512883968,1e-13,closed-form:9/sqrt(11/6)
+welch-t,inline2:1;2;3;4;5|10;12;14,df,3.5328467153284673,1e-13,closed-form:484/137
+pooled-t,inline2:1;2;3;4;5|10;12;14,t,7.115124735378854,1e-13,closed-form:9/sqrt(8/5)
+pooled-t,inline2:1;2;3;4;5|10;12;14,df,6.0,1e-15,closed-form:n1+n2-2
+paired-t,inline2:1;2;3;4;5|2;4;6;8;10,t,4.242640687119285,1e-13,closed-form:sqrt(18)
+paired-t,inline2:1;2;3;4;5|2;4;6;8;10,df,4.0,1e-15,closed-form:n-1

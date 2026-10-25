@@ -95,6 +95,22 @@ fn load_dataset(spec: &str) -> Vec<f64> {
     panic!("unsupported dataset spec: {spec}");
 }
 
+fn load_dataset_pair(spec: &str) -> (Vec<f64>, Vec<f64>) {
+    // `inline2:a1;a2;...|b1;b2;...` — two inline sequences.
+    let payload = spec
+        .strip_prefix("inline2:")
+        .unwrap_or_else(|| panic!("not an inline2 spec: {spec}"));
+    let (left, right) = payload
+        .split_once('|')
+        .unwrap_or_else(|| panic!("inline2 needs a `|`: {spec}"));
+    let parse = |s: &str| -> Vec<f64> {
+        s.split(';')
+            .map(|t| t.parse::<f64>().expect("inline2 value f64"))
+            .collect()
+    };
+    (parse(left), parse(right))
+}
+
 fn parse_params(spec: &str) -> std::collections::BTreeMap<String, f64> {
     let mut out = std::collections::BTreeMap::new();
     for pair in spec.split(';') {
@@ -115,6 +131,34 @@ fn run(row: &Row) -> f64 {
         let df = *p.get("df").expect("t-quantile needs df");
         let pr = *p.get("p").expect("t-quantile needs p");
         return graphcraft_stats::distributions::t::t_inv_cdf(pr, df).unwrap();
+    }
+    // Two-sample analyses: dataset is `inline2:...|...`.
+    if row.analysis == "welch-t" || row.analysis == "pooled-t" {
+        let (xs, ys) = load_dataset_pair(&row.dataset);
+        let kind = if row.analysis == "welch-t" {
+            graphcraft_stats::TwoSampleKind::Welch
+        } else {
+            graphcraft_stats::TwoSampleKind::Pooled
+        };
+        let r = graphcraft_stats::unpaired_t(&xs, &ys, kind).unwrap();
+        return match row.statistic.as_str() {
+            "t" => r.t,
+            "df" => r.df,
+            "mean_diff" => r.mean_diff,
+            "p" => r.p_two_sided,
+            other => panic!("unknown two-sample statistic: {other:?}"),
+        };
+    }
+    if row.analysis == "paired-t" {
+        let (xs, ys) = load_dataset_pair(&row.dataset);
+        let r = graphcraft_stats::paired_t(&xs, &ys).unwrap();
+        return match row.statistic.as_str() {
+            "t" => r.t,
+            "df" => r.df,
+            "mean_diff" => r.mean_diff,
+            "p" => r.p_two_sided,
+            other => panic!("unknown paired statistic: {other:?}"),
+        };
     }
 
     let xs = load_dataset(&row.dataset);

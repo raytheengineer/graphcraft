@@ -74,7 +74,10 @@ for everything after.
       incomplete beta); `Descriptives::ci_mean(α)` 95% CI;
       `one_sample_t` + `column_one_sample_t`; Cauchy-closed-form
       parity row at df=1, p=0.975
-- [ ] M3.2 — Two-sample t (unpaired Welch default, paired, pooled)
+- [x] M3.2 — Two-sample t: `paired_t`, `unpaired_t` with
+      `TwoSampleKind::{Welch, Pooled}`; Welch-Satterthwaite df;
+      `column_paired_t` / `column_unpaired_t` analysis wrappers;
+      closed-form parity rows for all three variants
 - [ ] M3.3 — One-way ANOVA + Tukey/Dunnett/Šidák/Bonferroni post-hocs
 - [ ] M3.4 — Non-parametric: Mann-Whitney, Wilcoxon, Kruskal-Wallis,
       Dunn's post-hoc
@@ -92,6 +95,9 @@ published reference values, not against Prism.
 | mean | NIST StRD *Lew* (univariate, n=200, certified ybar = -177.435000000000) | passing | 1e-13 |
 | sd | NIST StRD *Lew* (certified s = 277.332168044316) | passing | 1e-13 |
 | t-quantile | Cauchy (df=1) closed form: tan(π·0.475) = 12.706204736432095 | passing | 1e-10 |
+| welch-t | Closed form on `[1..5]` vs `[10,12,14]`: `t = 9/√(11/6)`, `df = 484/137` | passing | 1e-13 |
+| pooled-t | Closed form on same pair: `t = 9/√(8/5)`, `df = 6` | passing | 1e-13 |
+| paired-t | Closed form on `[1..5]` vs `[2,4,...,10]`: `t = √18`, `df = 4` | passing | 1e-13 |
 
 ## Known numerical gaps
 _(none logged yet)_
