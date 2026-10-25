@@ -75,6 +75,40 @@ pub fn build_graph_scene_in_project(
     Ok(scene)
 }
 
+/// Build a scene for a specific Graph sheet, applying the shared
+/// legend first and the sheet's per-graph `overrides` on top.
+/// This is what the UI / layout / renderers should use whenever
+/// they have a Graph `SheetId` in hand.
+pub fn build_graph_scene_for_sheet(
+    project: &Project,
+    sheet_id: SheetId,
+) -> Result<Scene, GraphError> {
+    let sheet = project
+        .get(sheet_id)
+        .ok_or(GraphError::SourceMissing(sheet_id))?;
+    let (source, spec, overrides) = match &sheet.body {
+        SheetBody::Graph {
+            source,
+            spec,
+            overrides,
+            ..
+        } => (*source, spec, overrides.as_slice()),
+        _ => return Err(GraphError::SourceMissing(sheet_id)),
+    };
+    let table = project
+        .data_sheet_table(source)
+        .ok_or(GraphError::SourceMissing(source))?;
+    let mut scene = build_graph_scene(table, spec)?;
+    apply_legend(&mut scene, &project.legend_registry);
+    if !overrides.is_empty() {
+        let per_graph = LegendRegistry {
+            entries: overrides.to_vec(),
+        };
+        apply_legend(&mut scene, &per_graph);
+    }
+    Ok(scene)
+}
+
 /// Overwrite scene series colours from the registry. Series
 /// without a matching key keep whatever colour the plot layer
 /// gave them (the "allow, not force" default).
@@ -181,6 +215,7 @@ pub fn add_graph_sheet(
             source,
             spec,
             source_hash: Some(hash),
+            overrides: Vec::new(),
         },
     });
     Ok(id)

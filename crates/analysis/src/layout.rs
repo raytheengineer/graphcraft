@@ -10,8 +10,6 @@ use std::fmt::Write;
 
 use graphcraft_format::{LayoutContent, Project, SheetBody, SheetId};
 
-use crate::build_graph_scene;
-
 /// Error path for the layout composer.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LayoutError {
@@ -99,24 +97,17 @@ fn compose_graph_item(
             index: idx,
             message: format!("graph sheet {} not found", graph_id.0),
         })?;
-    let (source, spec) = match &graph.body {
-        SheetBody::Graph { source, spec, .. } => (*source, spec),
-        _ => {
-            return Err(LayoutError::ItemError {
-                index: idx,
-                message: format!("sheet {} is not a graph", graph_id.0),
-            });
-        }
-    };
-    let table = project
-        .data_sheet_table(source)
-        .ok_or_else(|| LayoutError::ItemError {
+    if !matches!(&graph.body, SheetBody::Graph { .. }) {
+        return Err(LayoutError::ItemError {
             index: idx,
-            message: format!("graph {}'s source data missing", graph_id.0),
-        })?;
-    let scene = build_graph_scene(table, spec).map_err(|e| LayoutError::ItemError {
-        index: idx,
-        message: format!("{e}"),
+            message: format!("sheet {} is not a graph", graph_id.0),
+        });
+    }
+    let scene = crate::graph::build_graph_scene_for_sheet(project, graph_id).map_err(|e| {
+        LayoutError::ItemError {
+            index: idx,
+            message: format!("{e}"),
+        }
     })?;
     let scene_w = scene.width_pt;
     let scene_h = scene.height_pt;

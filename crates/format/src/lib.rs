@@ -86,6 +86,12 @@ pub enum SheetBody {
         /// older file.
         #[serde(default)]
         source_hash: Option<String>,
+        /// Per-graph legend overrides. Each entry's `key` matches
+        /// a key in the project-wide [`LegendRegistry`]; the
+        /// override replaces the shared appearance for this graph
+        /// only. Empty = fully inherit the shared legend.
+        #[serde(default)]
+        overrides: Vec<LegendEntry>,
     },
     /// A page layout composing multiple graphs / analyses / text
     /// blocks onto one printable sheet. All positions are in

@@ -86,8 +86,8 @@ pub enum InboxEvent {
 
 use egui::{Color32, ComboBox, Modal, Panel, RichText, ScrollArea, TextEdit, Ui};
 use graphcraft_analysis::{
-    add_analysis_sheet, add_graph_sheet, build_graph_scene_in_project, recompute_all_stale,
-    recompute_analysis_sheet, recompute_graph_sheet,
+    add_analysis_sheet, add_graph_sheet, recompute_all_stale, recompute_analysis_sheet,
+    recompute_graph_sheet,
 };
 use graphcraft_format::{
     AnalysisSpec, GraphColormap, GraphErrorBars, GraphSpec, Project, SheetBody, SheetId,
@@ -624,13 +624,14 @@ impl AppState {
                     ui.monospace(text);
                 });
             }
-            Some(SheetBody::Graph { source, spec, .. }) => {
+            Some(SheetBody::Graph { spec, .. }) => {
                 if spec.is_placeholder() {
                     self.render_placeholder_graph(ui, id);
                 } else {
-                    let source = *source;
-                    let spec = spec.clone();
-                    self.render_graph_scene(ui, source, &spec);
+                    self.render_graph_scene(ui, id);
+                    ui.add_space(8.0);
+                    ui.separator();
+                    self.render_graph_overrides(ui, id);
                 }
             }
             Some(SheetBody::Layout { items, .. }) => {
@@ -640,13 +641,8 @@ impl AppState {
         }
     }
 
-    fn render_graph_scene(
-        &self,
-        ui: &mut Ui,
-        source: SheetId,
-        spec: &graphcraft_format::GraphSpec,
-    ) {
-        match build_graph_scene_in_project(&self.project, source, spec) {
+    fn render_graph_scene(&self, ui: &mut Ui, graph_id: SheetId) {
+        match graphcraft_analysis::graph::build_graph_scene_for_sheet(&self.project, graph_id) {
             Ok(scene) => {
                 scene_painter::paint_scene(ui, &scene);
             }
@@ -657,6 +653,110 @@ impl AppState {
                 );
             }
         }
+    }
+
+    /// Per-graph legend override editor. Lists every key the
+    /// scene actually references; each one toggles "shared" vs
+    /// "override", and in override mode shows the same colour /
+    /// marker / size / line controls as the global Legend sidebar.
+    fn render_graph_overrides(&mut self, ui: &mut Ui, graph_id: SheetId) {
+        use graphcraft_format::{LegendColor, LegendEntry, LegendMarker};
+
+        // Keys referenced by this graph: for Column plots that's
+        // every ColumnBar label; for XY / Line / CensorTicks /
+        // GroupedBars it's the series label.
+        let keys: Vec<String> = match graphcraft_analysis::graph::build_graph_scene_for_sheet(
+            &self.project,
+            graph_id,
+        ) {
+            Ok(scene) => keys_of_scene(&scene),
+            Err(_) => return,
+        };
+        if keys.is_empty() {
+            return;
+        }
+
+        egui::CollapsingHeader::new(RichText::new("Style overrides").strong())
+            .id_salt(("gc-graph-overrides", graph_id.0))
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.label(
+                    RichText::new("Shared by default. Toggle a key to override it on this graph.")
+                        .weak()
+                        .small(),
+                );
+                for key in &keys {
+                    let shared_entry = self.project.legend_registry.get(key).cloned();
+                    let (has_override, idx) = find_override(&self.project, graph_id, key);
+                    let mut is_override = has_override;
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut is_override, "").changed() {
+                            if is_override {
+                                let seed = shared_entry.clone().unwrap_or(LegendEntry {
+                                    key: key.clone(),
+                                    display_name: key.clone(),
+                                    color: LegendColor(80, 125, 190),
+                                    marker: LegendMarker::Circle,
+                                    marker_size_pt: 4.0,
+                                    line_width_pt: 1.5,
+                                });
+                                push_override(&mut self.project, graph_id, seed);
+                            } else {
+                                remove_override_at(&mut self.project, graph_id, idx);
+                            }
+                        }
+                        ui.label(key);
+                    });
+                    if is_override {
+                        if let Some(entry) = override_mut(&mut self.project, graph_id, key) {
+                            ui.horizontal(|ui| {
+                                ui.add_space(24.0);
+                                let mut rgb = [
+                                    entry.color.0 as f32 / 255.0,
+                                    entry.color.1 as f32 / 255.0,
+                                    entry.color.2 as f32 / 255.0,
+                                ];
+                                if ui.color_edit_button_rgb(&mut rgb).changed() {
+                                    entry.color = LegendColor(
+                                        (rgb[0] * 255.0).round().clamp(0.0, 255.0) as u8,
+                                        (rgb[1] * 255.0).round().clamp(0.0, 255.0) as u8,
+                                        (rgb[2] * 255.0).round().clamp(0.0, 255.0) as u8,
+                                    );
+                                }
+                                ComboBox::from_id_salt(("gc-override-marker", graph_id.0, key))
+                                    .selected_text(marker_glyph(entry.marker))
+                                    .width(44.0)
+                                    .show_ui(ui, |ui| {
+                                        for m in [
+                                            LegendMarker::Circle,
+                                            LegendMarker::Square,
+                                            LegendMarker::Triangle,
+                                            LegendMarker::None,
+                                        ] {
+                                            ui.selectable_value(
+                                                &mut entry.marker,
+                                                m,
+                                                marker_glyph(m),
+                                            );
+                                        }
+                                    });
+                                ui.add(
+                                    egui::DragValue::new(&mut entry.marker_size_pt)
+                                        .range(0.0..=24.0)
+                                        .speed(0.1)
+                                        .prefix("size "),
+                                );
+                                ui.add(
+                                    egui::DragValue::new(&mut entry.line_width_pt)
+                                        .range(0.0..=8.0)
+                                        .speed(0.05)
+                                        .prefix("line "),
+                                );
+                            });
+                        }
+                    }
+                }
+            });
     }
 
     fn render_placeholder_graph(&mut self, ui: &mut Ui, graph_id: SheetId) {
@@ -1680,6 +1780,80 @@ fn dispatch_dropped_bytes(inbox: &FileInbox, name: &str, bytes: Vec<u8>) {
         inbox.push(InboxEvent::Status(format!(
             "ignored {name}: unknown extension"
         )));
+    }
+}
+
+/// Keys referenced by the series in `scene`. For stacked /
+/// grouped / column plots a key appears once even if used by
+/// many bars.
+fn keys_of_scene(scene: &graphcraft_plot::Scene) -> Vec<String> {
+    use graphcraft_plot::Series;
+    let mut out: Vec<String> = Vec::new();
+    let push = |s: &str, out: &mut Vec<String>| {
+        if !s.is_empty() && !out.iter().any(|k| k == s) {
+            out.push(s.to_string());
+        }
+    };
+    for s in &scene.series {
+        match s {
+            Series::Scatter { label, .. }
+            | Series::Line { label, .. }
+            | Series::GroupedBars { label, .. }
+            | Series::CensorTicks { label, .. } => push(label, &mut out),
+            Series::Bars { bars, .. } => {
+                for b in bars {
+                    push(&b.label, &mut out);
+                }
+            }
+            Series::Heatmap { .. } => {}
+        }
+    }
+    out
+}
+
+fn find_override(
+    project: &graphcraft_format::Project,
+    graph_id: SheetId,
+    key: &str,
+) -> (bool, usize) {
+    if let Some(SheetBody::Graph { overrides, .. }) = project.get(graph_id).map(|s| &s.body) {
+        if let Some(i) = overrides.iter().position(|e| e.key == key) {
+            return (true, i);
+        }
+    }
+    (false, usize::MAX)
+}
+
+fn push_override(
+    project: &mut graphcraft_format::Project,
+    graph_id: SheetId,
+    entry: graphcraft_format::LegendEntry,
+) {
+    if let Some(SheetBody::Graph { overrides, .. }) = project.get_mut(graph_id).map(|s| &mut s.body)
+    {
+        if !overrides.iter().any(|e| e.key == entry.key) {
+            overrides.push(entry);
+        }
+    }
+}
+
+fn remove_override_at(project: &mut graphcraft_format::Project, graph_id: SheetId, idx: usize) {
+    if let Some(SheetBody::Graph { overrides, .. }) = project.get_mut(graph_id).map(|s| &mut s.body)
+    {
+        if idx < overrides.len() {
+            overrides.remove(idx);
+        }
+    }
+}
+
+fn override_mut<'a>(
+    project: &'a mut graphcraft_format::Project,
+    graph_id: SheetId,
+    key: &str,
+) -> Option<&'a mut graphcraft_format::LegendEntry> {
+    match project.get_mut(graph_id).map(|s| &mut s.body) {
+        Some(SheetBody::Graph { overrides, .. }) => overrides.iter_mut().find(|e| e.key == key),
+        _ => None,
     }
 }
 
