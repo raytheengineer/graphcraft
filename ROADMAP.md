@@ -1,10 +1,14 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M3–M6 complete, M7.1 shipped.**
-Statistics catalogue, regression stack, five graph types with SVG
-and PDF export, and now a usable CLI that drives the whole
-pipeline. 71 numeric parity rows. Perf budgets, MCP, and the web
-build remain for M7.2–M7.4.
+Status headline (2026-10-25): **Launchable prototype — M1–M7 all
+complete.** Full statistics catalogue through M6, the regression
+stack through M4, five graph types with SVG+PDF export (M5), a
+driving CLI, a perf harness, an MCP stdio server, and a WASM web
+build (M7). 71 numeric parity rows; graphs tested by structural
+invariants; the engine WASM gate green since M1. Follow-ups
+(unbalanced designs, QR-regression for ill-conditioned problems,
+higher-precision `erf`, Prism-specific extras) are tracked but
+nothing on the critical path is open.
 
 ## Honest assessment (2026-10-25)
 
@@ -199,7 +203,14 @@ for everything after.
       anova, ttest_unpaired, ttest_paired, correlate, regress,
       chi2_independence, plot_xy_svg. No third-party MCP crate;
       pure JSON-RPC on stdin/stdout. Smoke-tested end-to-end.
-- [ ] M7.4 — Web build (WASM engine in a real page)
+- [x] M7.4 — Web build. `crates/web` wraps the analysis + plot
+      surface with `wasm-bindgen`; builds for
+      `wasm32-unknown-unknown` under the existing L1-L5 no-I/O
+      rule. `apps/web/index.html` is a single-file page (vanilla
+      HTML + ES modules + the WASM blob) with a CSV textarea and
+      buttons for describe / anova / correlate / Welch t / plot
+      xy. `apps/web/build.sh` wraps `wasm-pack`; `apps/web/pkg/`
+      is gitignored. M7 complete, launchable prototype shipped.
 
 ## Parity table
 To be filled in as analyses land. Each row grades our output against

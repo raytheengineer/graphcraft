@@ -1,0 +1,28 @@
+[package]
+name = "graphcraft_web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "WASM bindings for the GraphCraft analysis + plot surface."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+graphcraft_analysis = { path = "../analysis" }
+graphcraft_format = { path = "../format" }
+graphcraft_plot = { path = "../plot" }
+graphcraft_regression = { path = "../regression" }
+graphcraft_render = { path = "../render" }
+graphcraft_stats = { path = "../stats" }
+graphcraft_table = { path = "../table" }
+serde_json = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = { workspace = true }
+
+[lints]
+workspace = true

@@ -101,6 +101,7 @@ fn layers() -> Result<()> {
         ("graphcraft_format", 4),
         ("graphcraft_render", 5),
         ("graphcraft_engine", 5),
+        ("graphcraft_web", 5),
         ("graphcraft_ui_egui", 6),
         ("graphcraft", 6),
         ("graphcraft-cli", 6),

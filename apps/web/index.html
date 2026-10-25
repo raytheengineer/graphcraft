@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GraphCraft</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --accent: #1f77b4;
+      --panel: #f6f6f6;
+      --error: #b22222;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #141414;
+        --fg: #ededed;
+        --panel: #1e1e1e;
+        --accent: #4ea8de;
+        --error: #ff7979;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #141414;
+      --fg: #ededed;
+      --panel: #1e1e1e;
+      --accent: #4ea8de;
+      --error: #ff7979;
+    }
+    html, body { background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; margin: 0; }
+    header { padding: 16px 24px; border-bottom: 1px solid #ccc3; }
+    h1 { margin: 0; font-size: 20px; }
+    main { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 16px; }
+    @media (max-width: 720px) { main { grid-template-columns: 1fr; } }
+    textarea {
+      width: 100%; min-height: 220px; box-sizing: border-box;
+      font-family: ui-monospace, monospace; font-size: 13px;
+      padding: 8px; background: var(--panel); color: var(--fg);
+      border: 1px solid #ccc3; border-radius: 6px;
+    }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+    button {
+      background: var(--accent); color: white; border: 0; padding: 6px 12px;
+      border-radius: 6px; cursor: pointer; font-size: 13px;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    input[type="text"] {
+      padding: 6px 10px; border: 1px solid #ccc5; border-radius: 6px;
+      background: var(--panel); color: var(--fg); font-size: 13px; min-width: 100px;
+    }
+    #output {
+      font-family: ui-monospace, monospace; font-size: 12px;
+      background: var(--panel); padding: 12px; border-radius: 6px;
+      white-space: pre-wrap; max-height: 420px; overflow: auto;
+    }
+    #plot { background: white; border-radius: 6px; }
+    .error { color: var(--error); font-weight: 600; }
+    .status { font-size: 12px; opacity: 0.75; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>GraphCraft <span class="status" id="status">— loading WASM…</span></h1>
+</header>
+
+<main>
+  <section>
+    <label for="csv">CSV input (first row is headers)</label>
+    <textarea id="csv">ctrl,drug
+1,5
+2,9
+3,10
+4,12
+5,14</textarea>
+
+    <div class="controls">
+      <button id="btn-describe">describe</button>
+      <button id="btn-anova">anova</button>
+      <button id="btn-corr">correlate</button>
+      <input id="col-a" type="text" placeholder="a (name or index)" value="ctrl" />
+      <input id="col-b" type="text" placeholder="b (name or index)" value="drug" />
+      <button id="btn-ttest">Welch t</button>
+      <button id="btn-plot">plot xy</button>
+    </div>
+  </section>
+
+  <section>
+    <label>Result</label>
+    <pre id="output">(output appears here)</pre>
+    <div id="plot"></div>
+  </section>
+</main>
+
+<script type="module">
+  import init, {
+    graphcraft_version, describe, anova, correlate, ttest_welch,
+    regress, plot_xy_svg,
+  } from './pkg/graphcraft_web.js';
+
+  const output = document.getElementById('output');
+  const plot = document.getElementById('plot');
+  const status = document.getElementById('status');
+  const csv = () => document.getElementById('csv').value;
+  const colA = () => document.getElementById('col-a').value;
+  const colB = () => document.getElementById('col-b').value;
+
+  function show(obj) {
+    plot.innerHTML = '';
+    if (obj && obj.error) {
+      output.innerHTML = '<span class="error">error:</span> ' + obj.error;
+      return;
+    }
+    output.textContent = JSON.stringify(obj, null, 2);
+  }
+
+  function run(fn) {
+    try {
+      const raw = fn();
+      show(JSON.parse(raw));
+    } catch (e) {
+      show({ error: String(e) });
+    }
+  }
+
+  (async () => {
+    await init();
+    status.textContent = '— WASM ready (v' + graphcraft_version() + ')';
+
+    document.getElementById('btn-describe').onclick = () => run(() => describe(csv()));
+    document.getElementById('btn-anova').onclick = () => run(() => anova(csv()));
+    document.getElementById('btn-corr').onclick = () => run(() => correlate(csv(), colA(), colB()));
+    document.getElementById('btn-ttest').onclick = () => run(() => ttest_welch(csv(), colA(), colB()));
+    document.getElementById('btn-plot').onclick = () => {
+      try {
+        const raw = plot_xy_svg(csv(), colA(), colB());
+        const parsed = JSON.parse(raw);
+        if (parsed.error) { show(parsed); return; }
+        output.textContent = `rendered XY plot (${parsed.n_points} points)`;
+        plot.innerHTML = parsed.svg;
+      } catch (e) {
+        show({ error: String(e) });
+      }
+    };
+  })();
+</script>
+</body>
+</html>
