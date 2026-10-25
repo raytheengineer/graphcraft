@@ -99,9 +99,10 @@ Scientific input is untrusted. A crash loses the user's unsaved analysis.
 - Workspace clippy lints ban `unwrap()`, `expect()`, `panic!`,
   `unreachable!`, `todo!`, `unimplemented!` outside tests. `cargo xtask ci`
   fails on them.
-- No implicit panics either: `.get(i)` not `v[i]` on data-indexed access,
-  check floats finite before casting or looping on them, cap sizes read
-  from input, don't divide by zero.
+- No implicit panics either: `.get(i)` not `v[i]` on data-indexed access
+  (this is a review-time rule, not a lint — `clippy::indexing_slicing` is
+  too noisy; use it as guidance), check floats finite before casting or
+  looping on them, cap sizes read from input, don't divide by zero.
 - `engine::guard` catches any panic at every entry point (commands, control
   requests, UI frame, MCP), rolls the document back, reports an internal
   error. WASM has no safety net — the no-panic lints exist for the WASM

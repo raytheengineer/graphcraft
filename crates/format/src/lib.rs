@@ -2,6 +2,9 @@
 //!
 //! `.pzfx` is deliberately NOT supported (see `AGENTS.md` › Clean-room).
 
+pub mod csv;
+pub use csv::import_csv;
+
 use serde::{Deserialize, Serialize};
 
 pub const FORMAT_TAG: &str = "graphcraft";
@@ -44,6 +47,26 @@ pub enum FormatError {
     UnsupportedVersion(u32),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("csv input is empty")]
+    CsvEmpty,
+    #[error("csv input is not valid UTF-8")]
+    CsvNotUtf8,
+    #[error("csv input too large: {0} bytes")]
+    CsvTooLarge(usize),
+    #[error("csv line {line}: unterminated quoted field")]
+    CsvUnterminatedQuote { line: usize },
+    #[error("csv line {line}: row has {got} cells but header has {header}")]
+    CsvRowTooLong {
+        line: usize,
+        got: usize,
+        header: usize,
+    },
+    #[error("csv line {line} column {column}: cell {cell:?} is not numeric")]
+    CsvNotNumeric {
+        line: usize,
+        column: usize,
+        cell: String,
+    },
 }
 
 pub fn parse(bytes: &[u8]) -> Result<Document, FormatError> {

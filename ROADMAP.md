@@ -37,7 +37,8 @@ for everything after.
 - [x] `engine::guard` + one trivial command + command-registry test
 - [x] `tests/parity-matrix.csv` seed row + harness
 - [x] WASM gate wired in GitHub Actions CI (`.github/workflows/ci.yml`)
-- [ ] First CSV importer
+- [x] First CSV importer (`graphcraft_format::import_csv`,
+      `graphcraft-cli import <csv> <out>`)
 
 ### M2 — Data tables
 ### M3 — Descriptive + t-tests + 1-way ANOVA + non-parametric

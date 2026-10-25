@@ -1,9 +1,10 @@
 //! GraphCraft CLI — M1.
 //!
 //! Subcommands:
-//!   graphcraft-cli commands         — list registered engine commands
-//!   graphcraft-cli run <id>         — run one command on an empty session
-//!   graphcraft-cli new <PATH>       — write an empty .graphcraft document
+//!   graphcraft-cli commands             — list registered engine commands
+//!   graphcraft-cli run <id>             — run one command on an empty session
+//!   graphcraft-cli new <PATH>           — write an empty .graphcraft document
+//!   graphcraft-cli import <CSV> <OUT>   — import a CSV as a .graphcraft document
 //!
 //! Later milestones add perf, bench, mcp, run <FILE>.
 
@@ -41,6 +42,34 @@ fn main() -> ExitCode {
                 }
             }
         }
+        [sub, src, dst] if sub == "import" => match std::fs::read(src) {
+            Ok(bytes) => match graphcraft_format::import_csv(&bytes) {
+                Ok(doc) => match graphcraft_format::serialize(&doc) {
+                    Ok(out) => match std::fs::write(dst, out) {
+                        Ok(()) => {
+                            println!("imported {src} -> {dst}");
+                            ExitCode::SUCCESS
+                        }
+                        Err(e) => {
+                            eprintln!("write failed: {e}");
+                            ExitCode::from(1)
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("serialize failed: {e}");
+                        ExitCode::from(1)
+                    }
+                },
+                Err(e) => {
+                    eprintln!("import failed: {e}");
+                    ExitCode::from(1)
+                }
+            },
+            Err(e) => {
+                eprintln!("read failed: {e}");
+                ExitCode::from(1)
+            }
+        },
         [sub, path] if sub == "new" => {
             let doc = graphcraft_format::Document::empty();
             match graphcraft_format::serialize(&doc) {
@@ -73,6 +102,7 @@ fn print_usage() {
          usage:\n  \
          graphcraft-cli commands\n  \
          graphcraft-cli run <command_id>\n  \
-         graphcraft-cli new <path>"
+         graphcraft-cli new <path>\n  \
+         graphcraft-cli import <csv-path> <out-path>"
     );
 }
