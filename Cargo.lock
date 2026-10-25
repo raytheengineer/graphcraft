@@ -17,6 +17,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphcraft-bench"
+version = "0.0.1"
+dependencies = [
+ "graphcraft_analysis",
+ "graphcraft_numeric",
+ "graphcraft_plot",
+ "graphcraft_regression",
+ "graphcraft_render",
+ "graphcraft_stats",
+ "graphcraft_table",
+]
+
+[[package]]
 name = "graphcraft-cli"
 version = "0.0.1"
 dependencies = [

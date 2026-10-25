@@ -1,0 +1,25 @@
+[package]
+name = "graphcraft-bench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "GraphCraft perf-budget harness."
+
+[dependencies]
+graphcraft_analysis = { path = "../../crates/analysis" }
+graphcraft_numeric = { path = "../../crates/numeric" }
+graphcraft_plot = { path = "../../crates/plot" }
+graphcraft_regression = { path = "../../crates/regression" }
+graphcraft_render = { path = "../../crates/render" }
+graphcraft_stats = { path = "../../crates/stats" }
+graphcraft_table = { path = "../../crates/table" }
+
+[[bin]]
+name = "graphcraft-bench"
+path = "src/main.rs"
+
+[lints]
+workspace = true

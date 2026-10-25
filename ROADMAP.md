@@ -188,7 +188,11 @@ for everything after.
       (format chosen by extension). Column args accept 0-based
       index or header-name match. Smoke-tested end-to-end:
       CSV → JSON, SVG, PDF.
-- [ ] M7.2 — Perf budget harness
+- [x] M7.2 — `apps/graphcraft-bench` binary that runs seven
+      representative workloads (OLS, LM, XY→SVG/PDF, Kruskal-Wallis,
+      Chi-squared, one-site binding fit) and prints median wall-
+      times. `cargo xtask perf` builds release and runs the bench.
+      Advisory in CI; absolute budgets in `docs/perf.md`.
 - [ ] M7.3 — MCP (Model Context Protocol) stdio wiring
 - [ ] M7.4 — Web build (WASM engine in a real page)
 

@@ -12,6 +12,7 @@ members = [
     "crates/engine",
     "crates/ui-egui",
     "apps/graphcraft",
+    "apps/graphcraft-bench",
     "apps/graphcraft-cli",
     "xtask",
 ]

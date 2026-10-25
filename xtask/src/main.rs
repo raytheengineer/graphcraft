@@ -15,6 +15,7 @@ fn main() -> Result<()> {
         Some("cleanroom") => cleanroom(),
         Some("assets") => assets(),
         Some("wasm") => wasm(),
+        Some("perf") => perf(),
         Some("ci") => ci(),
         Some(other) => Err(anyhow!("unknown xtask: {other}. See xtask/src/main.rs")),
         None => {
@@ -28,6 +29,7 @@ fn main() -> Result<()> {
                  cleanroom — scan the repo for banned-provenance markers\n  \
                  assets    — verify every tracked asset is listed in ASSETS.md\n  \
                  wasm      — build the engine for wasm32-unknown-unknown (noop if target absent)\n  \
+                 perf      — run the perf-budget harness (advisory)\n  \
                  ci        — run everything above"
             );
             Ok(())
@@ -102,6 +104,7 @@ fn layers() -> Result<()> {
         ("graphcraft_ui_egui", 6),
         ("graphcraft", 6),
         ("graphcraft-cli", 6),
+        ("graphcraft-bench", 6),
     ]
     .into_iter()
     .collect();
@@ -294,6 +297,11 @@ fn wasm() -> Result<()> {
         "--target",
         "wasm32-unknown-unknown",
     ]))
+}
+
+fn perf() -> Result<()> {
+    // Build release so the numbers mean something.
+    run(Command::new("cargo").args(["run", "--release", "-p", "graphcraft-bench", "--"]))
 }
 
 fn ci() -> Result<()> {
