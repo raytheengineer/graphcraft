@@ -1,9 +1,9 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M3, M4, M5 complete.** Statistics
-and regression through M4; XY/Column/Grouped/Survival scene builders
-with SVG and hand-written PDF export at L5. 46 numeric parity rows;
-graphs tested by structural invariants.
+Status headline (2026-10-25): **M3–M5 complete, M6.1 shipped.**
+Statistics, regression, four graph types with SVG+PDF export, and
+now correlation + chi-squared/Fisher contingency tests. 54 numeric
+parity rows; graphs tested by structural invariants.
 
 ## Honest assessment (2026-10-25)
 
@@ -145,6 +145,17 @@ for everything after.
       does. Structural tests: header, `xref` + `trailer` + `%%EOF`,
       parentheses escape. M5 complete.
 ### M6 — Remaining analyses + graph types
+- [x] M6.1 — Pearson & Spearman correlation with t-transform p
+      and Fisher-z CI; chi-squared independence test on an
+      `r × c` table; Fisher's exact test for 2×2 via the
+      hypergeometric distribution (two-sided by point-probability
+      rule). Analysis wrappers `column_pearson`, `column_spearman`,
+      `table_chi_squared`, `table_fisher_exact`. Eight new
+      closed-form parity rows.
+- [ ] M6.2 — ROC analysis + Bland-Altman
+- [ ] M6.3 — 2-way ANOVA
+- [ ] M6.4 — Survival statistics (log-rank, hazard ratio)
+- [ ] M6.5 — Heatmap graph type + Shapiro-Wilk normality
 ### M7 — Polish, perf budgets, MCP, web build
 
 ## Parity table
@@ -174,6 +185,9 @@ published reference values, not against Prism.
 | simple-linear-regression | NIST StRD *Norris* (B0, B1, SE B0, SE B1, R², residual SD) | passing | 1e-11 |
 | misra1a (LM) | NIST StRD *Misra1a* (b1, b2, RSS, residual SD) | passing | 1e-5 |
 | library-fit:* | Six models (one-site, Hill, exp-decay, log-dose-response, line) on synthetic exact data | passing | 1e-6 to 1e-12 |
+| pearson / spearman | Closed form `r = 6/√60`, `r = 1` on exact / monotone | passing | 1e-13 |
+| chi2-indep | Closed form 2×2 `X² = 50/3`, `df = 1` | passing | 1e-13 |
+| fisher-exact | Fisher 1922 lady-tasting-tea `p = 2/70`; OR = 9 | passing | 1e-13 |
 
 ## Known numerical gaps
 _(none logged yet)_

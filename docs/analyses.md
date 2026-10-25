@@ -43,6 +43,10 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | Nonlinear fit (Levenberg-Marquardt) | `graphcraft_regression::levenberg_marquardt` | (model library in M4.3) | NIST StRD *Misra1a* at 1e-6 |
 | Published model library       | `graphcraft_regression::{fit_model, NonlinearModel, OneSiteBinding, HillBinding, ExpDecayOnePhase, ExpGrowth, LogDoseResponse, Line}` | — | Closed-form synthetic data at 1e-6+ |
 | XY scatter graph (scene + SVG) | `graphcraft_plot::{Scene, xy_scene, xy_scene_from_points}` + `graphcraft_render::render_svg` | — | Structural (ticks, labels, elements) |
+| Pearson correlation           | `pearson`            | `column_pearson`       | Closed form on textbook (r = 6/√60) |
+| Spearman rank correlation     | `spearman`           | `column_spearman`      | r = 1 on monotone input |
+| Chi-squared independence      | `chi_squared_independence` | `table_chi_squared` | Closed form 2×2 (X² = 50/3) |
+| Fisher's exact (2×2)          | `fisher_exact_2x2`   | `table_fisher_exact`   | Fisher 1922 lady-tasting-tea (p = 2/70) |
 
 ## Descriptive statistics (M3.0)
 
@@ -512,3 +516,59 @@ Deferred to M4.3+:
 - Prism's two-phase decay, log-growth, Gompertz, Hill with
   constraint; sigmoidal dose-response with constrained Top/Bottom.
 - User-defined models through an expression language.
+
+## Correlation and contingency (M6.1)
+
+### Correlation
+
+- `pearson(xs, ys)` → `Correlation { n, r, t, df, p_two_sided, ci95 }`.
+  Standard product-moment formula on centred `(x, y)`; the t
+  transform `t = r·√((n−2)/(1−r²))` on `n−2` df gives the two-sided
+  p; a Fisher-z-based CI is reported for the correlation itself.
+- `spearman(xs, ys)` is `pearson` on tie-averaged ranks of both
+  inputs (via `graphcraft_numeric::ranks_with_ties`).
+- `column_pearson(table, a, b)` and `column_spearman(table, a, b)`
+  wrap the `ColumnTable` case, pairing by row index and dropping
+  rows missing either value.
+
+Behaviour references (public):
+- Fisher, R. A. (1915) *Biometrika* 10, 507–521.
+- Spearman, C. (1904) *American Journal of Psychology* 15, 72–101.
+
+### Contingency
+
+- `chi_squared_independence(obs)` on a row-major `r × c` count
+  matrix. `E_ij = row_i · col_j / n`, `X² = Σ (O−E)²/E`,
+  `df = (r−1)(c−1)`, `p = P(χ² ≥ X²)` via `chi2_sf`.
+- `fisher_exact_2x2(a, b, c, d)` uses the hypergeometric
+  distribution on `X = a` conditional on both margins fixed. The
+  two-sided p follows the "point-probability" rule: sum of all
+  tables (within the hypergeometric support) whose point mass is
+  at or below the observed table's mass. One-sided p is
+  `min(lower-tail, upper-tail)`. Odds ratio is `(a·d)/(b·c)`.
+- Analysis wrappers: `table_chi_squared(contingency)` and
+  `table_fisher_exact(contingency)`.
+
+Behaviour references (public):
+- Pearson, K. (1900) *Philosophical Magazine* 50, 157–175.
+- Fisher, R. A. (1922) *JRSS* 85, 87–94.
+- Agresti, A. (2013) *Categorical Data Analysis*, 3rd ed., Wiley.
+
+### Parity rows (new, 8 total)
+
+- `pearson` on `[1..5]` vs `[2,4,5,4,5]` → `r = 6/√60` at 1e-13;
+  on exact line → `r = 1`.
+- `spearman` on monotone input → `r = 1`.
+- `chi2-indep` on 2×2 `[[20,30],[40,10]]` → `X² = 50/3` and
+  `df = 1`.
+- `fisher-exact` on `[[4,0],[0,4]]` (lady-tasting-tea) →
+  `p_two_sided = 2/70`, `p_one_sided = 1/70`.
+- `fisher-exact` on `[[3,1],[1,3]]` → odds ratio = 9.
+
+Deferred to M6.1+:
+- Partial correlation.
+- Kendall's τ.
+- Chi-squared with Yates's continuity correction (Prism's "with
+  Yates" opt-in).
+- Fisher's exact for `r × c` beyond 2×2 (uses Mehta-Patel-style
+  network algorithm).

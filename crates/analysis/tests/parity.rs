@@ -181,6 +181,22 @@ fn fit_library(id: &str, xs: &[f64], ys: &[f64]) -> graphcraft_regression::LmFit
     .unwrap_or_else(|e| panic!("library fit {id} failed: {e:?}"))
 }
 
+fn load_contingency(spec: &str) -> Vec<Vec<u64>> {
+    // `contingency:a;b;c||d;e;f||...` — rows separated by `||`,
+    // cells by `;`.
+    let payload = spec
+        .strip_prefix("contingency:")
+        .unwrap_or_else(|| panic!("not a contingency spec: {spec}"));
+    payload
+        .split("||")
+        .map(|row| {
+            row.split(';')
+                .map(|t| t.parse::<u64>().expect("contingency cell u64"))
+                .collect()
+        })
+        .collect()
+}
+
 fn load_regression_pair(spec: &str) -> (Vec<f64>, Vec<f64>) {
     // NIST StRD regression (y, x) pairs:  nist-regr:tests/data/nist/Norris.dat
     //
@@ -397,6 +413,48 @@ fn run(row: &Row) -> f64 {
             "p" => r.p,
             "df" => r.df,
             other => panic!("unknown kruskal-wallis statistic: {other:?}"),
+        };
+    }
+    if row.analysis == "pearson" {
+        let (xs, ys) = load_dataset_pair(&row.dataset);
+        let r = graphcraft_stats::pearson(&xs, &ys).unwrap();
+        return match row.statistic.as_str() {
+            "r" => r.r,
+            "t" => r.t,
+            "p" => r.p_two_sided,
+            other => panic!("unknown pearson statistic: {other:?}"),
+        };
+    }
+    if row.analysis == "spearman" {
+        let (xs, ys) = load_dataset_pair(&row.dataset);
+        let r = graphcraft_stats::spearman(&xs, &ys).unwrap();
+        return match row.statistic.as_str() {
+            "r" => r.r,
+            "p" => r.p_two_sided,
+            other => panic!("unknown spearman statistic: {other:?}"),
+        };
+    }
+    if row.analysis == "chi2-indep" {
+        let obs = load_contingency(&row.dataset);
+        let r = graphcraft_stats::chi_squared_independence(&obs).unwrap();
+        return match row.statistic.as_str() {
+            "chi2" => r.chi2,
+            "df" => r.df,
+            "p" => r.p,
+            other => panic!("unknown chi2-indep statistic: {other:?}"),
+        };
+    }
+    if row.analysis == "fisher-exact" {
+        let obs = load_contingency(&row.dataset);
+        assert_eq!(obs.len(), 2, "fisher-exact needs 2 rows");
+        assert_eq!(obs[0].len(), 2, "fisher-exact needs 2 cols");
+        let r =
+            graphcraft_stats::fisher_exact_2x2(obs[0][0], obs[0][1], obs[1][0], obs[1][1]).unwrap();
+        return match row.statistic.as_str() {
+            "p_two_sided" => r.p_two_sided,
+            "p_one_sided" => r.p_one_sided,
+            "odds_ratio" => r.odds_ratio,
+            other => panic!("unknown fisher-exact statistic: {other:?}"),
         };
     }
     if row.analysis == "normal-cdf" {

@@ -9,12 +9,13 @@
 use graphcraft_numeric::NumericError;
 use graphcraft_regression::{simple_linear_regression, OlsFit};
 use graphcraft_stats::{
-    dunnett, dunns_test, kruskal_wallis, mann_whitney, one_sample_t, one_way_anova, paired_t,
-    tukey_hsd, unpaired_t, wilcoxon_signed_rank, Descriptives, DunnPair, DunnettSide,
-    KruskalWallis, MannWhitney, OneSampleT, OneWayAnova, PairedT, PairwiseComparison,
+    chi_squared_independence, dunnett, dunns_test, fisher_exact_2x2, kruskal_wallis, mann_whitney,
+    one_sample_t, one_way_anova, paired_t, pearson, spearman, tukey_hsd, unpaired_t,
+    wilcoxon_signed_rank, ChiSquaredTest, Correlation, Descriptives, DunnPair, DunnettSide,
+    FisherExact, KruskalWallis, MannWhitney, OneSampleT, OneWayAnova, PairedT, PairwiseComparison,
     TwoSampleKind, TwoSampleT, WilcoxonSignedRank,
 };
-use graphcraft_table::{ColumnTable, XyTable};
+use graphcraft_table::{ColumnTable, ContingencyTable, XyTable};
 
 /// Per-group one-sample t-test result on a Column table.
 #[derive(Debug, Clone)]
@@ -145,6 +146,72 @@ pub fn column_dunnett(
 pub fn column_tukey_hsd(table: &ColumnTable) -> Result<Vec<PairwiseComparison>, NumericError> {
     let anova = column_one_way_anova(table)?;
     tukey_hsd(&anova)
+}
+
+/// Pearson correlation on two `ColumnTable` columns, pairing by
+/// row index and dropping rows missing either value.
+pub fn column_pearson(
+    table: &ColumnTable,
+    col_a: usize,
+    col_b: usize,
+) -> Result<Correlation, NumericError> {
+    let (xs, ys) = pair_columns(table, col_a, col_b)?;
+    pearson(&xs, &ys)
+}
+
+/// Spearman rank correlation on two `ColumnTable` columns.
+pub fn column_spearman(
+    table: &ColumnTable,
+    col_a: usize,
+    col_b: usize,
+) -> Result<Correlation, NumericError> {
+    let (xs, ys) = pair_columns(table, col_a, col_b)?;
+    spearman(&xs, &ys)
+}
+
+fn pair_columns(
+    table: &ColumnTable,
+    col_a: usize,
+    col_b: usize,
+) -> Result<(Vec<f64>, Vec<f64>), NumericError> {
+    if col_a >= table.columns.len() || col_b >= table.columns.len() {
+        return Err(NumericError::TooFewValues {
+            required: col_a.max(col_b) + 1,
+            got: table.columns.len(),
+        });
+    }
+    let a = &table.columns[col_a].values;
+    let b = &table.columns[col_b].values;
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+    for (ai, bi) in a.iter().zip(b.iter()) {
+        if let (Some(x), Some(y)) = (ai, bi) {
+            xs.push(*x);
+            ys.push(*y);
+        }
+    }
+    Ok((xs, ys))
+}
+
+/// Chi-squared independence test on a `ContingencyTable`.
+pub fn table_chi_squared(table: &ContingencyTable) -> Result<ChiSquaredTest, NumericError> {
+    chi_squared_independence(&table.counts)
+}
+
+/// Fisher's exact test on a `ContingencyTable`. The table must be
+/// 2×2.
+pub fn table_fisher_exact(table: &ContingencyTable) -> Result<FisherExact, NumericError> {
+    if table.rows() != 2 || table.cols() != 2 {
+        return Err(NumericError::TooFewValues {
+            required: 4,
+            got: table.rows() * table.cols(),
+        });
+    }
+    let a = table.cell(0, 0).unwrap_or(0);
+    let b = table.cell(0, 1).unwrap_or(0);
+    let c = table.cell(1, 0).unwrap_or(0);
+    let d = table.cell(1, 1).unwrap_or(0);
+    fisher_exact_2x2(a, b, c, d)
 }
 
 /// Simple linear regression on dataset `dataset_idx` of an
