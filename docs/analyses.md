@@ -25,6 +25,10 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | Paired t-test                 | `paired_t`           | `column_paired_t`      | Closed form: `sqrt(18)` |
 | Welch's unpaired t-test       | `unpaired_t(Welch)`  | `column_unpaired_t`    | Closed form: `9/sqrt(11/6)`, `df = 484/137` |
 | Pooled unpaired t-test        | `unpaired_t(Pooled)` | `column_unpaired_t`    | Closed form: `9/sqrt(8/5)`, `df = 6` |
+| F-distribution                | `distributions::f::{f_cdf, f_sf, f_inv_cdf}` | — | `F(1;2,2) = 0.5` and `F(1;1,1) = 0.5` |
+| One-way ANOVA                 | `one_way_anova`      | `column_one_way_anova` | Closed form: `F = 27, SS = (54, 6)` |
+| Bonferroni adjustment         | `bonferroni` / `bonferroni_family` | — | Closed form: `p·m` |
+| Šidák adjustment              | `sidak` / `sidak_family` | — | Closed form: `1 − (1 − p)^m` |
 
 ## Descriptive statistics (M3.0)
 
@@ -144,3 +148,55 @@ Parity rows (closed-form, 1e-13):
 
 Deferred to M3.2+:
 - One-way ANOVA and the F-distribution (M3.3).
+
+## F-distribution, one-way ANOVA, and p-value adjustments (M3.3)
+
+`graphcraft_stats::distributions::f` adds the Fisher-Snedecor F
+distribution on real-valued df, computed from the same
+`inc_beta_reg` backbone:
+
+- `f_cdf(x, d1, d2) = I_u(d1/2, d2/2)` with `u = d1·x / (d1·x + d2)`.
+- `f_sf` is the complement; `f_inv_cdf` uses the same bisection
+  pattern as the Student-t quantile.
+
+`graphcraft_stats::anova::one_way_anova(groups)` produces the
+textbook one-way ANOVA table:
+
+- Grand mean weighted by group `n`.
+- `SS_between = Σ n_i · (ȳ_i − ȳ)²`.
+- `SS_within  = Σ (n_i − 1) · s_i²` (groups with `n = 1` contribute
+  zero).
+- `df = (k − 1, N − k)`, `MS = SS/df`, `F = MS_between/MS_within`,
+  right-tailed p from `f_sf`.
+- `Err(DivisionByZero)` when every group is a single constant
+  (within-group variance is zero and F is undefined).
+
+Analysis API: `column_one_way_anova(&ColumnTable)` runs ANOVA across
+all non-empty columns, preserving column order in `group_ns` /
+`group_means`.
+
+`graphcraft_stats::mcomp` adds two closed-form family-wise error
+adjustments:
+
+- `bonferroni(p, m) = min(1, p·m)`.
+- `sidak(p, m) = 1 − (1 − p)^m`.
+- `bonferroni_family(&[f64])` / `sidak_family(&[f64])` run the
+  adjustment across a slice of raw p-values with `m = ps.len()`.
+
+Parity rows:
+
+- `f-cdf` at `(d1=2, d2=2, x=1)` → `0.5` (closed form via
+  `I_{0.5}(1, 1) = 0.5`), passing at 1e-14.
+- `f-cdf` at `(d1=1, d2=1, x=1)` → `0.5` (arcsine-distribution
+  symmetry), passing at 1e-13.
+- `one-way-anova` on `[1,2,3] / [4,5,6] / [7,8,9]`: `F = 27`,
+  `SS_between = 54`, `SS_within = 6` — all closed form at 1e-13.
+- `bonferroni(0.01, 5) = 0.05` at 1e-15.
+- `sidak(0.05, 2) = 0.0975` at 1e-15.
+
+Deferred to M3.3+:
+- Tukey's HSD — needs the studentized-range (q) distribution.
+- Dunnett's test — needs the multivariate t-distribution and
+  Dunnett's own critical-value tables (public domain; implementation
+  will transcribe the published algorithm, not Prism).
+- Two-way and mixed ANOVA — scheduled with M6 remaining analyses.

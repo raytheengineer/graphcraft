@@ -78,7 +78,13 @@ for everything after.
       `TwoSampleKind::{Welch, Pooled}`; Welch-Satterthwaite df;
       `column_paired_t` / `column_unpaired_t` analysis wrappers;
       closed-form parity rows for all three variants
-- [ ] M3.3 — One-way ANOVA + Tukey/Dunnett/Šidák/Bonferroni post-hocs
+- [x] M3.3a — F-distribution (`f_cdf`/`f_sf`/`f_inv_cdf`); one-way
+      ANOVA (`one_way_anova`, `column_one_way_anova`) with the full
+      ANOVA table; Bonferroni and Šidák p-value adjustments
+      (`bonferroni`, `sidak`, `*_family`). Five new closed-form parity
+      rows at 1e-13 or tighter.
+- [ ] M3.3b — Tukey HSD (needs studentized-range q distribution) and
+      Dunnett's test (needs multivariate t)
 - [ ] M3.4 — Non-parametric: Mann-Whitney, Wilcoxon, Kruskal-Wallis,
       Dunn's post-hoc
 ### M4 — Linear + nonlinear regression (LM + published model library)
@@ -98,6 +104,10 @@ published reference values, not against Prism.
 | welch-t | Closed form on `[1..5]` vs `[10,12,14]`: `t = 9/√(11/6)`, `df = 484/137` | passing | 1e-13 |
 | pooled-t | Closed form on same pair: `t = 9/√(8/5)`, `df = 6` | passing | 1e-13 |
 | paired-t | Closed form on `[1..5]` vs `[2,4,...,10]`: `t = √18`, `df = 4` | passing | 1e-13 |
+| f-cdf | `F(1; 2, 2) = 0.5`; `F(1; 1, 1) = 0.5` | passing | 1e-13 |
+| one-way-anova | Closed form on `[1,2,3]/[4,5,6]/[7,8,9]`: `F=27`, `SS=(54,6)` | passing | 1e-13 |
+| bonferroni | Closed form `p·m` | passing | 1e-15 |
+| sidak | Closed form `1−(1−p)^m` | passing | 1e-15 |
 
 ## Known numerical gaps
 _(none logged yet)_

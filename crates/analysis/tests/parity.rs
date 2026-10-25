@@ -111,6 +111,21 @@ fn load_dataset_pair(spec: &str) -> (Vec<f64>, Vec<f64>) {
     (parse(left), parse(right))
 }
 
+fn load_dataset_groups(spec: &str) -> Vec<Vec<f64>> {
+    // `inline-groups:a;b||c;d||e;f` — k groups separated by `||`.
+    let payload = spec
+        .strip_prefix("inline-groups:")
+        .unwrap_or_else(|| panic!("not an inline-groups spec: {spec}"));
+    payload
+        .split("||")
+        .map(|g| {
+            g.split(';')
+                .map(|t| t.parse::<f64>().expect("group value f64"))
+                .collect()
+        })
+        .collect()
+}
+
 fn parse_params(spec: &str) -> std::collections::BTreeMap<String, f64> {
     let mut out = std::collections::BTreeMap::new();
     for pair in spec.split(';') {
@@ -147,6 +162,39 @@ fn run(row: &Row) -> f64 {
             "mean_diff" => r.mean_diff,
             "p" => r.p_two_sided,
             other => panic!("unknown two-sample statistic: {other:?}"),
+        };
+    }
+    if row.analysis == "f-cdf" {
+        let p = parse_params(&row.dataset);
+        let d1 = *p.get("d1").expect("f-cdf needs d1");
+        let d2 = *p.get("d2").expect("f-cdf needs d2");
+        let x = *p.get("x").expect("f-cdf needs x");
+        return graphcraft_stats::distributions::f::f_cdf(x, d1, d2).unwrap();
+    }
+    if row.analysis == "bonferroni" {
+        let p = parse_params(&row.dataset);
+        let raw = *p.get("p").expect("bonferroni needs p");
+        let m = *p.get("m").expect("bonferroni needs m") as usize;
+        return graphcraft_stats::bonferroni(raw, m).unwrap();
+    }
+    if row.analysis == "sidak" {
+        let p = parse_params(&row.dataset);
+        let raw = *p.get("p").expect("sidak needs p");
+        let m = *p.get("m").expect("sidak needs m") as usize;
+        return graphcraft_stats::sidak(raw, m).unwrap();
+    }
+    if row.analysis == "one-way-anova" {
+        let groups = load_dataset_groups(&row.dataset);
+        let r = graphcraft_stats::one_way_anova(&groups).unwrap();
+        return match row.statistic.as_str() {
+            "f" => r.f,
+            "p" => r.p,
+            "ss_between" => r.ss_between,
+            "ss_within" => r.ss_within,
+            "ss_total" => r.ss_total,
+            "df_between" => r.df_between,
+            "df_within" => r.df_within,
+            other => panic!("unknown anova statistic: {other:?}"),
         };
     }
     if row.analysis == "paired-t" {

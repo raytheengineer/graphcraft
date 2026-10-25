@@ -8,8 +8,8 @@
 
 use graphcraft_numeric::NumericError;
 use graphcraft_stats::{
-    one_sample_t, paired_t, unpaired_t, Descriptives, OneSampleT, PairedT, TwoSampleKind,
-    TwoSampleT,
+    one_sample_t, one_way_anova, paired_t, unpaired_t, Descriptives, OneSampleT, OneWayAnova,
+    PairedT, TwoSampleKind, TwoSampleT,
 };
 use graphcraft_table::ColumnTable;
 
@@ -86,6 +86,19 @@ pub fn column_paired_t(
         }
     }
     paired_t(&xs, &ys)
+}
+
+/// One-way ANOVA across all non-empty columns of a Column table.
+/// Column order is preserved in `group_ns` / `group_means`.
+pub fn column_one_way_anova(table: &ColumnTable) -> Result<OneWayAnova, NumericError> {
+    let mut groups: Vec<Vec<f64>> = Vec::new();
+    for (i, _) in table.columns.iter().enumerate() {
+        let g: Vec<f64> = table.group_values(i).collect();
+        if !g.is_empty() {
+            groups.push(g);
+        }
+    }
+    one_way_anova(&groups)
 }
 
 /// Descriptive statistics for one group (one column) of a Column

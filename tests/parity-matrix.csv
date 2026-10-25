@@ -10,3 +10,10 @@ pooled-t,inline2:1;2;3;4;5|10;12;14,t,7.115124735378854,1e-13,closed-form:9/sqrt
 pooled-t,inline2:1;2;3;4;5|10;12;14,df,6.0,1e-15,closed-form:n1+n2-2
 paired-t,inline2:1;2;3;4;5|2;4;6;8;10,t,4.242640687119285,1e-13,closed-form:sqrt(18)
 paired-t,inline2:1;2;3;4;5|2;4;6;8;10,df,4.0,1e-15,closed-form:n-1
+f-cdf,d1=2;d2=2;x=1,p,0.5,1e-14,closed-form:I_half(1;1)=0.5
+f-cdf,d1=1;d2=1;x=1,p,0.5,1e-13,closed-form:I_half(0.5;0.5)=0.5
+one-way-anova,inline-groups:1;2;3||4;5;6||7;8;9,f,27.0,1e-13,closed-form:MS_between/MS_within=27/1
+one-way-anova,inline-groups:1;2;3||4;5;6||7;8;9,ss_between,54.0,1e-13,closed-form:3*9+0+3*9
+one-way-anova,inline-groups:1;2;3||4;5;6||7;8;9,ss_within,6.0,1e-13,closed-form:3*(n-1)*1
+bonferroni,p=0.01;m=5,p_adj,0.05,1e-15,closed-form:min(1;p*m)
+sidak,p=0.05;m=2,p_adj,0.0975,1e-15,closed-form:1-(1-p)^m

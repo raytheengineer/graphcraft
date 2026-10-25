@@ -2,11 +2,15 @@
 //!
 //! Behaviour reference is public documentation only; see `AGENTS.md`.
 
+pub mod anova;
 pub mod descriptive;
 pub mod distributions;
+pub mod mcomp;
 pub mod special;
 pub mod ttest;
+pub use anova::{one_way_anova, OneWayAnova};
 pub use descriptive::Descriptives;
+pub use mcomp::{bonferroni, bonferroni_family, sidak, sidak_family};
 pub use ttest::{
     one_sample_t, paired_t, unpaired_t, OneSampleT, PairedT, TwoSampleKind, TwoSampleT,
 };
