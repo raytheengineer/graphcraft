@@ -705,6 +705,266 @@ impl SurvivalTable {
     }
 }
 
+// -------- Parts-of-whole tables --------------------------------------
+//
+// Prism's Parts-of-whole layout: a list of (label, value) rows that
+// a pie/donut chart renders as slices of a total. Values must be
+// finite and non-negative; the grand total must be positive.
+//
+// Reference (public manual, "Parts of whole data tables"):
+//   https://www.graphpad.com/guides/prism/latest/user-guide/
+
+/// One slice of a [`PartsOfWholeTable`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PartSlice {
+    pub label: String,
+    pub value: f64,
+}
+
+/// Reason a [`PartsOfWholeTable`] fails [`PartsOfWholeTable::validate`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum PartsOfWholeError {
+    SliceNotFinite { slice: usize },
+    SliceNegative { slice: usize, value: f64 },
+    ZeroTotal,
+}
+
+impl std::fmt::Display for PartsOfWholeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PartsOfWholeError::SliceNotFinite { slice } => {
+                write!(f, "parts-of-whole slice {slice}: value is not finite")
+            }
+            PartsOfWholeError::SliceNegative { slice, value } => {
+                write!(f, "parts-of-whole slice {slice}: value {value} is negative")
+            }
+            PartsOfWholeError::ZeroTotal => f.write_str("parts-of-whole total is zero"),
+        }
+    }
+}
+
+impl std::error::Error for PartsOfWholeError {}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PartsOfWholeTable {
+    pub title: String,
+    pub value_title: String,
+    pub slices: Vec<PartSlice>,
+}
+
+impl PartsOfWholeTable {
+    pub fn new(title: impl Into<String>, value_title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            value_title: value_title.into(),
+            slices: Vec::new(),
+        }
+    }
+
+    pub fn kind(&self) -> TableKind {
+        TableKind::PartsOfWhole
+    }
+
+    pub fn total(&self) -> f64 {
+        self.slices.iter().map(|s| s.value).sum()
+    }
+
+    pub fn validate(&self) -> Result<(), PartsOfWholeError> {
+        for (i, s) in self.slices.iter().enumerate() {
+            if !s.value.is_finite() {
+                return Err(PartsOfWholeError::SliceNotFinite { slice: i });
+            }
+            if s.value < 0.0 {
+                return Err(PartsOfWholeError::SliceNegative {
+                    slice: i,
+                    value: s.value,
+                });
+            }
+        }
+        if self.total() <= 0.0 {
+            return Err(PartsOfWholeError::ZeroTotal);
+        }
+        Ok(())
+    }
+}
+
+// -------- Multiple-variables tables ----------------------------------
+//
+// Prism's Multiple-variables layout: a flat spreadsheet of typed
+// columns. Each column is either numeric (f64, missing = None) or
+// categorical (String, missing = None). All columns share one row
+// count. Powers correlation matrices, multiple regression, PCA.
+//
+// Reference (public manual, "Multiple variables data tables"):
+//   https://www.graphpad.com/guides/prism/latest/user-guide/
+
+/// One column of a [`MultipleVariablesTable`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "values", rename_all = "snake_case")]
+pub enum MvColumnData {
+    Numeric(Vec<Option<f64>>),
+    Categorical(Vec<Option<String>>),
+}
+
+impl MvColumnData {
+    pub fn len(&self) -> usize {
+        match self {
+            MvColumnData::Numeric(v) => v.len(),
+            MvColumnData::Categorical(v) => v.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MvColumn {
+    pub title: String,
+    pub data: MvColumnData,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MultipleVariablesError {
+    /// Columns have different lengths.
+    LengthMismatch {
+        column: usize,
+        expected: usize,
+        got: usize,
+    },
+}
+
+impl std::fmt::Display for MultipleVariablesError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MultipleVariablesError::LengthMismatch {
+                column,
+                expected,
+                got,
+            } => write!(
+                f,
+                "multiple-variables column {column}: has {got} rows but table has {expected}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for MultipleVariablesError {}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MultipleVariablesTable {
+    pub title: String,
+    pub columns: Vec<MvColumn>,
+}
+
+impl MultipleVariablesTable {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            columns: Vec::new(),
+        }
+    }
+
+    pub fn kind(&self) -> TableKind {
+        TableKind::MultipleVariables
+    }
+
+    pub fn width(&self) -> usize {
+        self.columns.len()
+    }
+
+    pub fn height(&self) -> usize {
+        self.columns.first().map_or(0, |c| c.data.len())
+    }
+
+    pub fn validate(&self) -> Result<(), MultipleVariablesError> {
+        let h = self.height();
+        for (i, c) in self.columns.iter().enumerate().skip(1) {
+            if c.data.len() != h {
+                return Err(MultipleVariablesError::LengthMismatch {
+                    column: i,
+                    expected: h,
+                    got: c.data.len(),
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
+// -------- Nested tables ----------------------------------------------
+//
+// Prism's Nested layout: one column per treatment group; inside each
+// group one block per nested unit ("subject"); inside each subject
+// one or more replicate observations. Replicate counts may differ
+// across subjects (realistic experimental data). Powers nested
+// t-test, nested one-way ANOVA and hierarchical models.
+//
+// Reference (public manual, "Nested data tables"):
+//   https://www.graphpad.com/guides/prism/latest/user-guide/
+
+/// One nested subject inside a [`NestedGroup`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NestedSubject {
+    pub title: String,
+    pub values: Vec<Option<f64>>,
+}
+
+/// One treatment group inside a [`NestedTable`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NestedGroup {
+    pub title: String,
+    pub subjects: Vec<NestedSubject>,
+}
+
+impl NestedGroup {
+    /// Total non-missing observations across all subjects in this group.
+    pub fn observations(&self) -> usize {
+        self.subjects
+            .iter()
+            .map(|s| s.values.iter().filter(|v| v.is_some()).count())
+            .sum()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NestedTable {
+    pub title: String,
+    pub groups: Vec<NestedGroup>,
+}
+
+impl NestedTable {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            groups: Vec::new(),
+        }
+    }
+
+    pub fn kind(&self) -> TableKind {
+        TableKind::Nested
+    }
+
+    pub fn width(&self) -> usize {
+        self.groups.len()
+    }
+
+    /// Total non-missing observations across the whole table.
+    pub fn observations(&self) -> usize {
+        self.groups.iter().map(NestedGroup::observations).sum()
+    }
+
+    /// Non-missing replicates for one `(group, subject)` cell.
+    pub fn replicates(&self, group: usize, subject: usize) -> impl Iterator<Item = f64> + '_ {
+        self.groups
+            .get(group)
+            .and_then(|g| g.subjects.get(subject))
+            .into_iter()
+            .flat_map(|s| s.values.iter().copied().flatten())
+    }
+}
+
 // -------- AnyTable (typed container) ---------------------------------
 //
 // Documents hold a heterogenous list of tables (an experiment may mix
@@ -723,6 +983,9 @@ pub enum AnyTable {
     Grouped(GroupedTable),
     Contingency(ContingencyTable),
     Survival(SurvivalTable),
+    PartsOfWhole(PartsOfWholeTable),
+    MultipleVariables(MultipleVariablesTable),
+    Nested(NestedTable),
 }
 
 impl AnyTable {
@@ -733,6 +996,9 @@ impl AnyTable {
             AnyTable::Grouped(_) => TableKind::Grouped,
             AnyTable::Contingency(_) => TableKind::Contingency,
             AnyTable::Survival(_) => TableKind::Survival,
+            AnyTable::PartsOfWhole(_) => TableKind::PartsOfWhole,
+            AnyTable::MultipleVariables(_) => TableKind::MultipleVariables,
+            AnyTable::Nested(_) => TableKind::Nested,
         }
     }
 }
@@ -764,6 +1030,24 @@ impl From<ContingencyTable> for AnyTable {
 impl From<SurvivalTable> for AnyTable {
     fn from(t: SurvivalTable) -> Self {
         AnyTable::Survival(t)
+    }
+}
+
+impl From<PartsOfWholeTable> for AnyTable {
+    fn from(t: PartsOfWholeTable) -> Self {
+        AnyTable::PartsOfWhole(t)
+    }
+}
+
+impl From<MultipleVariablesTable> for AnyTable {
+    fn from(t: MultipleVariablesTable) -> Self {
+        AnyTable::MultipleVariables(t)
+    }
+}
+
+impl From<NestedTable> for AnyTable {
+    fn from(t: NestedTable) -> Self {
+        AnyTable::Nested(t)
     }
 }
 
@@ -1271,6 +1555,195 @@ mod tests {
         let t: AnyTable = sample_survival().into();
         let json = serde_json::to_string(&t).unwrap();
         assert!(json.contains("\"kind\":\"survival\""), "got {json}");
+        let back: AnyTable = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, back);
+    }
+
+    fn sample_pow() -> PartsOfWholeTable {
+        PartsOfWholeTable {
+            title: "market share".into(),
+            value_title: "%".into(),
+            slices: vec![
+                PartSlice {
+                    label: "A".into(),
+                    value: 40.0,
+                },
+                PartSlice {
+                    label: "B".into(),
+                    value: 25.0,
+                },
+                PartSlice {
+                    label: "C".into(),
+                    value: 35.0,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn pow_total_and_validate() {
+        let t = sample_pow();
+        assert_eq!(t.kind(), TableKind::PartsOfWhole);
+        assert!((t.total() - 100.0).abs() < 1e-15);
+        t.validate().unwrap();
+    }
+
+    #[test]
+    fn pow_rejects_negative_and_nan_and_zero_total() {
+        let mut t = sample_pow();
+        t.slices[1].value = -1.0;
+        assert!(matches!(
+            t.validate().unwrap_err(),
+            PartsOfWholeError::SliceNegative { slice: 1, .. }
+        ));
+
+        let mut t = sample_pow();
+        t.slices[0].value = f64::NAN;
+        assert!(matches!(
+            t.validate().unwrap_err(),
+            PartsOfWholeError::SliceNotFinite { slice: 0 }
+        ));
+
+        let t = PartsOfWholeTable {
+            title: "".into(),
+            value_title: "".into(),
+            slices: vec![PartSlice {
+                label: "zero".into(),
+                value: 0.0,
+            }],
+        };
+        assert!(matches!(
+            t.validate().unwrap_err(),
+            PartsOfWholeError::ZeroTotal
+        ));
+    }
+
+    #[test]
+    fn pow_round_trip_as_any_table() {
+        let t: AnyTable = sample_pow().into();
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(json.contains("\"kind\":\"parts_of_whole\""), "got {json}");
+        let back: AnyTable = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, back);
+    }
+
+    fn sample_mv() -> MultipleVariablesTable {
+        MultipleVariablesTable {
+            title: "cohort".into(),
+            columns: vec![
+                MvColumn {
+                    title: "age".into(),
+                    data: MvColumnData::Numeric(vec![Some(25.0), Some(37.0), None, Some(44.0)]),
+                },
+                MvColumnData::Categorical(vec![
+                    Some("F".into()),
+                    Some("M".into()),
+                    Some("F".into()),
+                    None,
+                ])
+                .into_column("sex"),
+            ],
+        }
+    }
+
+    // Convenience for terseness in the fixture.
+    impl MvColumnData {
+        fn into_column(self, title: &str) -> MvColumn {
+            MvColumn {
+                title: title.to_string(),
+                data: self,
+            }
+        }
+    }
+
+    #[test]
+    fn mv_shape_and_validate() {
+        let t = sample_mv();
+        assert_eq!(t.kind(), TableKind::MultipleVariables);
+        assert_eq!(t.width(), 2);
+        assert_eq!(t.height(), 4);
+        t.validate().unwrap();
+    }
+
+    #[test]
+    fn mv_rejects_length_mismatch() {
+        let mut t = sample_mv();
+        if let MvColumnData::Categorical(v) = &mut t.columns[1].data {
+            v.push(None);
+        }
+        assert!(matches!(
+            t.validate().unwrap_err(),
+            MultipleVariablesError::LengthMismatch {
+                column: 1,
+                expected: 4,
+                got: 5
+            }
+        ));
+    }
+
+    #[test]
+    fn mv_round_trip_as_any_table() {
+        let t: AnyTable = sample_mv().into();
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(
+            json.contains("\"kind\":\"multiple_variables\""),
+            "got {json}"
+        );
+        let back: AnyTable = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, back);
+    }
+
+    fn sample_nested() -> NestedTable {
+        NestedTable {
+            title: "slice counts".into(),
+            groups: vec![
+                NestedGroup {
+                    title: "Ctrl".into(),
+                    subjects: vec![
+                        NestedSubject {
+                            title: "mouse 1".into(),
+                            values: vec![Some(10.0), Some(11.0), Some(12.0)],
+                        },
+                        NestedSubject {
+                            title: "mouse 2".into(),
+                            values: vec![Some(9.0), None, Some(13.0)],
+                        },
+                    ],
+                },
+                NestedGroup {
+                    title: "Drug".into(),
+                    subjects: vec![NestedSubject {
+                        title: "mouse 3".into(),
+                        values: vec![Some(20.0), Some(21.0)],
+                    }],
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn nested_shape_and_counts() {
+        let t = sample_nested();
+        assert_eq!(t.kind(), TableKind::Nested);
+        assert_eq!(t.width(), 2);
+        assert_eq!(t.groups[0].observations(), 5); // 3 + 2 (one None)
+        assert_eq!(t.groups[1].observations(), 2);
+        assert_eq!(t.observations(), 7);
+    }
+
+    #[test]
+    fn nested_replicates_skip_missing() {
+        let t = sample_nested();
+        let xs: Vec<f64> = t.replicates(0, 1).collect();
+        assert_eq!(xs, vec![9.0, 13.0]);
+        assert_eq!(t.replicates(9, 0).count(), 0);
+    }
+
+    #[test]
+    fn nested_round_trip_as_any_table() {
+        let t: AnyTable = sample_nested().into();
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(json.contains("\"kind\":\"nested\""), "got {json}");
         let back: AnyTable = serde_json::from_str(&json).unwrap();
         assert_eq!(t, back);
     }

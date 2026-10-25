@@ -18,9 +18,9 @@ by URL.
 | Grouped               | ✅ (M2.3)   | `GroupedTable`                |
 | Contingency           | ✅ (M2.4)   | `ContingencyTable`            |
 | Survival              | ✅ (M2.5)   | `SurvivalTable`               |
-| Parts-of-whole        | planned     | —                             |
-| Multiple-variables    | planned     | —                             |
-| Nested                | planned     | —                             |
+| Parts-of-whole        | ✅ (M2.6)   | `PartsOfWholeTable`           |
+| Multiple-variables    | ✅ (M2.6)   | `MultipleVariablesTable`      |
+| Nested                | ✅ (M2.6)   | `NestedTable`                 |
 
 Reference: GraphPad Prism public manual,
 <https://www.graphpad.com/guides/prism/latest/user-guide/>.
@@ -114,6 +114,39 @@ sort by time at analysis time.
 - `width()` groups, `subjects()` total rows across groups.
 - `SurvivalGroup::events()` and `.censored()` count by category.
 - `validate()` rejects non-finite or negative times.
+
+## Parts-of-whole tables (`PartsOfWholeTable`)
+
+A list of `(label, value)` slices that a pie or donut chart renders
+as fractions of a total. `validate()` requires every value to be
+finite and non-negative, and the grand total to be positive.
+
+## Multiple-variables tables (`MultipleVariablesTable`)
+
+A flat spreadsheet. Each column is either `MvColumnData::Numeric`
+(`Vec<Option<f64>>`) or `MvColumnData::Categorical`
+(`Vec<Option<String>>`); `None` means missing in both cases. All
+columns share one row count; `validate()` enforces rectangularity.
+The input shape for correlation matrices, multiple regression and
+PCA.
+
+The `MvColumnData` variant uses adjacently-tagged serde
+(`{"kind": "numeric", "values": [...]}` or `{"kind": "categorical",
+"values": [...]}`) because internally-tagged can't carry a newtype
+wrapping a sequence.
+
+## Nested tables (`NestedTable`)
+
+Three-level layout: one column per treatment group, inside each
+group one block per nested unit ("subject"), inside each subject
+one or more replicate observations. Replicate counts may differ
+across subjects — realistic experimental data is unbalanced.
+Powers nested t-test, nested one-way ANOVA and hierarchical
+models.
+
+- `NestedTable::width()`, `.observations()` (non-missing total),
+  `.replicates(group, subject)` (iterator over non-missing f64).
+- `NestedGroup::observations()` for the per-group total.
 
 ## Typed container (`AnyTable`)
 

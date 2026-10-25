@@ -59,7 +59,11 @@ for everything after.
       `SurvivalRow { time, censored }`, event/censored counts,
       finite+non-negative time validation,
       `AnyTable::Survival` round-trip)
-- [ ] M2.6 — Parts-of-whole / Multiple-variables / Nested
+- [x] M2.6 — Parts-of-whole (`PartsOfWholeTable`),
+      Multiple-variables (`MultipleVariablesTable`, typed numeric or
+      categorical columns), and Nested (`NestedTable`,
+      group → subject → replicates). All three with validation and
+      `AnyTable` round-trip. M2 complete.
 ### M3 — Descriptive + t-tests + 1-way ANOVA + non-parametric
 ### M4 — Linear + nonlinear regression (LM + published model library)
 ### M5 — Core graphs (XY, Column, Grouped, Survival) + SVG/PDF export
