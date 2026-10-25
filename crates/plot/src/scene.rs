@@ -108,11 +108,18 @@ pub struct LineStyle {
 }
 
 /// One pre-computed bar: category label + mean (height) + error.
+///
+/// `color` overrides the series `MarkerStyle.fill` for this bar
+/// alone when set. The legend registry writes it on an apply pass;
+/// a `None` means "use the series default", preserving the
+/// pre-M10.1 behaviour and backward-compatible file round-trip.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnBar {
     pub label: String,
     pub mean: f64,
     pub error: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<Color>,
 }
 
 /// One pre-computed grouped-bar entry: which group it belongs to

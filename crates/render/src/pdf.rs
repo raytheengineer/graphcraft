@@ -193,7 +193,11 @@ fn build_content(scene: &Scene) -> String {
                     let x_center = i as f64 + 1.0;
                     let (x0, y_top) = to_pdf(x_center - bar_half, b.mean.max(0.0));
                     let (x1, y_base) = to_pdf(x_center + bar_half, 0.0);
-                    draw_filled_rect(&mut c, x0, y_base, x1, y_top, marker);
+                    let per_bar = graphcraft_plot::MarkerStyle {
+                        fill: b.color.unwrap_or(marker.fill),
+                        ..*marker
+                    };
+                    draw_filled_rect(&mut c, x0, y_base, x1, y_top, &per_bar);
                     if b.error > 0.0 {
                         let (xm, _) = to_pdf(x_center, 0.0);
                         let (_, y_up) = to_pdf(x_center, b.mean + b.error);

@@ -91,11 +91,17 @@ pub fn apply_legend(scene: &mut Scene, registry: &LegendRegistry) {
                     style.stroke = Color(e.color.0, e.color.1, e.color.2);
                 }
             }
-            Series::Bars { .. } => {
-                // Column plots carry per-bar labels in one shared
-                // MarkerStyle. Per-bar legend colouring needs a
-                // ColumnBar.color field (M9.8); for M9.7 we leave
-                // the series fill as the plot layer picked it.
+            Series::Bars { bars, .. } => {
+                // Each bar carries its own column title in `label`
+                // and its own optional `color`. Look each one up
+                // in the registry and override the per-bar fill;
+                // a miss leaves `None` so the shared series fill
+                // continues to apply.
+                for b in bars.iter_mut() {
+                    if let Some(e) = registry.get(&b.label) {
+                        b.color = Some(Color(e.color.0, e.color.1, e.color.2));
+                    }
+                }
             }
             Series::GroupedBars { label, marker, .. } => {
                 if let Some(e) = registry.get(label) {

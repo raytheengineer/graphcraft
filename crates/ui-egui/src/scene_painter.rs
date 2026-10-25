@@ -269,13 +269,14 @@ fn paint_bars(
     data_to_px: &impl Fn(f64, f64) -> Pos2,
 ) {
     let bar_half = 0.3;
-    let fill = to_c32(marker.fill);
+    let default_fill = to_c32(marker.fill);
     let stroke = Stroke::new(marker.stroke_width_pt as f32 * s, to_c32(marker.stroke));
     for (i, b) in bars.iter().enumerate() {
         let x_center = i as f64 + 1.0;
         let p0 = data_to_px(x_center - bar_half, b.mean);
         let p1 = data_to_px(x_center + bar_half, 0.0);
         let rect = Rect::from_two_pos(p0, p1);
+        let fill = b.color.map(to_c32).unwrap_or(default_fill);
         p.rect_filled(rect, 0.0, fill);
         p.rect_stroke(rect, 0.0, stroke, egui::StrokeKind::Outside);
         if b.error > 0.0 {

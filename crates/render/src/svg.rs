@@ -164,6 +164,7 @@ pub fn render_svg(scene: &Scene) -> String {
                     let (x0, y_top) = to_px(x_center - bar_half, b.mean);
                     let (x1, y_base) = to_px(x_center + bar_half, 0.0);
                     let (x, y, w, h) = rect_from_corners(x0, y_top, x1, y_base);
+                    let fill = b.color.unwrap_or(marker.fill);
                     let _ = writeln!(
                         out,
                         r#"<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{f}" stroke="{s}" stroke-width="{sw}"/>"#,
@@ -171,7 +172,7 @@ pub fn render_svg(scene: &Scene) -> String {
                         y = fmt_f(y),
                         w = fmt_f(w),
                         h = fmt_f(h),
-                        f = fmt_color(marker.fill),
+                        f = fmt_color(fill),
                         s = fmt_color(marker.stroke),
                         sw = fmt_f(marker.stroke_width_pt),
                     );

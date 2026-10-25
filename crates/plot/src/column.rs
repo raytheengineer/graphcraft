@@ -76,6 +76,7 @@ pub fn column_scene(table: &ColumnTable, opts: &ColumnOptions) -> Result<Scene, 
             label: col.title.clone(),
             mean,
             error,
+            color: None,
         });
     }
     if bars.is_empty() {
