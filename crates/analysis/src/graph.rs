@@ -7,7 +7,7 @@
 //! [`add_graph_sheet`] just records the binding.
 
 use graphcraft_format::{
-    GraphColormap, GraphErrorBars, GraphSpec, Project, Sheet, SheetBody, SheetId,
+    source_hash, GraphColormap, GraphErrorBars, GraphSpec, Project, Sheet, SheetBody, SheetId,
 };
 use graphcraft_numeric::NumericError;
 use graphcraft_plot::{
@@ -87,10 +87,10 @@ pub fn add_graph_sheet(
     let sheet = project
         .get(source)
         .ok_or(GraphError::SourceMissing(source))?;
-    match &sheet.body {
-        SheetBody::Data { .. } => {}
+    let hash = match &sheet.body {
+        SheetBody::Data { table } => source_hash(table),
         _ => return Err(GraphError::SourceNotData(source)),
-    }
+    };
     let title = spec.default_title();
     let id = project.next_sheet_id();
     project.sheets.push(Sheet {
@@ -99,10 +99,35 @@ pub fn add_graph_sheet(
         body: SheetBody::Graph {
             source,
             spec,
-            source_hash: None,
+            source_hash: Some(hash),
         },
     });
     Ok(id)
+}
+
+/// Refresh the `source_hash` of a Graph sheet to the current
+/// source table. (The scene itself is derived on demand, so there
+/// is nothing else to update.) Fails if the sheet or its source
+/// has disappeared.
+pub fn recompute_graph_sheet(project: &mut Project, id: SheetId) -> Result<(), GraphError> {
+    let source = match project.get(id) {
+        Some(s) => match &s.body {
+            SheetBody::Graph { source, .. } => *source,
+            _ => return Err(GraphError::SourceNotData(id)),
+        },
+        None => return Err(GraphError::SourceMissing(id)),
+    };
+    let table = project
+        .data_sheet_table(source)
+        .ok_or(GraphError::SourceMissing(source))?
+        .clone();
+    let hash = source_hash(&table);
+    if let Some(sheet) = project.get_mut(id) {
+        if let SheetBody::Graph { source_hash: h, .. } = &mut sheet.body {
+            *h = Some(hash);
+        }
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------
@@ -399,6 +424,39 @@ mod tests {
                 build_graph_scene(table, spec),
                 Err(GraphError::UnknownColumn(_))
             ));
+        }
+    }
+
+    #[test]
+    fn mutating_source_marks_graph_stale() {
+        use graphcraft_format::{source_hash, SheetStatus};
+        let (mut p, src) = sample_project();
+        let g = add_graph_sheet(
+            &mut p,
+            src,
+            GraphSpec::Column {
+                title: None,
+                error_bars: GraphErrorBars::Sd,
+                y_title: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(p.sheet_status(g), SheetStatus::Fresh);
+
+        if let SheetBody::Data {
+            table: graphcraft_table::AnyTable::Column(t),
+        } = &mut p.get_mut(src).unwrap().body
+        {
+            t.columns[0].values[0] = Some(999.0);
+        }
+        assert_eq!(p.sheet_status(g), SheetStatus::Stale);
+
+        recompute_graph_sheet(&mut p, g).unwrap();
+        assert_eq!(p.sheet_status(g), SheetStatus::Fresh);
+
+        let current = source_hash(p.data_sheet_table(src).unwrap());
+        if let SheetBody::Graph { source_hash: h, .. } = &p.get(g).unwrap().body {
+            assert_eq!(h.as_deref(), Some(current.as_str()));
         }
     }
 

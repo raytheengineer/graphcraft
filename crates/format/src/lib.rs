@@ -314,12 +314,92 @@ impl Project {
             _ => None,
         }
     }
+
+    /// Freshness status of a sheet relative to its source. Data
+    /// sheets are always Fresh (nothing to be stale against); if a
+    /// derived sheet records no `source_hash` (never computed, or
+    /// came from an older file) the status is `Unknown`.
+    pub fn sheet_status(&self, id: SheetId) -> SheetStatus {
+        let sheet = match self.get(id) {
+            Some(s) => s,
+            None => return SheetStatus::Unknown,
+        };
+        let (source, recorded) = match &sheet.body {
+            SheetBody::Data { .. } => return SheetStatus::Fresh,
+            SheetBody::Analysis {
+                source,
+                source_hash,
+                ..
+            }
+            | SheetBody::Graph {
+                source,
+                source_hash,
+                ..
+            } => (*source, source_hash.as_deref()),
+        };
+        let recorded = match recorded {
+            Some(h) => h,
+            None => return SheetStatus::Unknown,
+        };
+        let table = match self.data_sheet_table(source) {
+            Some(t) => t,
+            None => return SheetStatus::Unknown,
+        };
+        if source_hash(table) == recorded {
+            SheetStatus::Fresh
+        } else {
+            SheetStatus::Stale
+        }
+    }
+
+    /// Ids of all stale sheets, in sheet order. Convenience for
+    /// a "recompute all" loop.
+    pub fn stale_sheet_ids(&self) -> Vec<SheetId> {
+        self.sheets
+            .iter()
+            .filter(|s| matches!(self.sheet_status(s.id), SheetStatus::Stale))
+            .map(|s| s.id)
+            .collect()
+    }
 }
 
 impl Default for Project {
     fn default() -> Self {
         Self::new("Untitled")
     }
+}
+
+/// Freshness status for an Analysis or Graph sheet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SheetStatus {
+    /// Source hash matches the current source table (or sheet
+    /// has no source, as with Data sheets).
+    Fresh,
+    /// Source hash differs — the sheet needs recomputing.
+    Stale,
+    /// No hash recorded, source missing, or sheet id unknown.
+    Unknown,
+}
+
+/// Deterministic content hash of an `AnyTable`.
+///
+/// FNV-1a-64 over serde_json's canonical byte output. Not
+/// cryptographic — but reliable for the "did this table change
+/// since I ran my analysis?" question. Hex-encoded as 16 chars for
+/// compact storage and visual diff. Tables never nest HashMaps or
+/// HashSets, so serde_json's output is itself deterministic.
+pub fn source_hash(table: &AnyTable) -> String {
+    let bytes = serde_json::to_vec(table).unwrap_or_default();
+    format!("{:016x}", fnv1a_64(&bytes))
+}
+
+fn fnv1a_64(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in bytes {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100_0000_01b3);
+    }
+    h
 }
 
 /// Top-level document stored in a `.graphcraft` file.
@@ -572,6 +652,75 @@ mod tests {
         let bytes = serialize(&Document::from_project(p)).unwrap();
         let text = std::str::from_utf8(&bytes).unwrap();
         assert!(text.contains(r#""kind": "data""#));
+    }
+
+    #[test]
+    fn source_hash_is_deterministic_and_differs_on_change() {
+        let a = sample_column_table("x");
+        let b = sample_column_table("x");
+        assert_eq!(source_hash(&a), source_hash(&b));
+        // A changed cell shifts the hash.
+        let mut c = sample_column_table("x");
+        if let AnyTable::Column(t) = &mut c {
+            t.columns[0].values[0] = Some(999.0);
+        }
+        assert_ne!(source_hash(&a), source_hash(&c));
+    }
+
+    #[test]
+    fn sheet_status_fresh_until_source_mutates() {
+        let mut p = Project::new("p");
+        let src = p.add_data_sheet("tbl", sample_column_table("x"));
+        // Fake an analysis sheet with the matching hash.
+        let hash = source_hash(p.data_sheet_table(src).unwrap());
+        p.sheets.push(Sheet {
+            id: p.next_sheet_id(),
+            title: "analysis".into(),
+            body: SheetBody::Analysis {
+                source: src,
+                spec: AnalysisSpec::Descriptives,
+                result: serde_json::Value::Null,
+                source_hash: Some(hash),
+            },
+        });
+        let ana_id = p.sheets.last().unwrap().id;
+        assert_eq!(p.sheet_status(ana_id), SheetStatus::Fresh);
+        assert!(p.stale_sheet_ids().is_empty());
+
+        // Mutate the source table — the analysis goes stale.
+        if let SheetBody::Data {
+            table: AnyTable::Column(t),
+        } = &mut p.get_mut(src).unwrap().body
+        {
+            t.columns[0].values.push(Some(42.0));
+        }
+        assert_eq!(p.sheet_status(ana_id), SheetStatus::Stale);
+        assert_eq!(p.stale_sheet_ids(), vec![ana_id]);
+    }
+
+    #[test]
+    fn sheet_status_unknown_without_hash() {
+        let mut p = Project::new("p");
+        let src = p.add_data_sheet("tbl", sample_column_table("x"));
+        p.sheets.push(Sheet {
+            id: p.next_sheet_id(),
+            title: "no-hash".into(),
+            body: SheetBody::Analysis {
+                source: src,
+                spec: AnalysisSpec::Descriptives,
+                result: serde_json::Value::Null,
+                source_hash: None,
+            },
+        });
+        let id = p.sheets.last().unwrap().id;
+        assert_eq!(p.sheet_status(id), SheetStatus::Unknown);
+    }
+
+    #[test]
+    fn data_sheet_status_is_fresh() {
+        let mut p = Project::new("p");
+        let src = p.add_data_sheet("tbl", sample_column_table("x"));
+        assert_eq!(p.sheet_status(src), SheetStatus::Fresh);
     }
 
     #[test]

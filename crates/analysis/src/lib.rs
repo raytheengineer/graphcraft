@@ -7,8 +7,33 @@
 
 pub mod graph;
 pub mod project;
-pub use graph::{add_graph_sheet, build_graph_scene, GraphError};
-pub use project::{add_analysis_sheet, run_analysis, AnalysisError};
+pub use graph::{add_graph_sheet, build_graph_scene, recompute_graph_sheet, GraphError};
+pub use project::{add_analysis_sheet, recompute_analysis_sheet, run_analysis, AnalysisError};
+
+use graphcraft_format::{Project, SheetBody};
+
+/// Recompute every stale Analysis and Graph sheet in `project`.
+/// Returns the number of sheets that were refreshed. Individual
+/// recompute failures are swallowed per sheet — compute errors
+/// end up persisted on the sheet's `result` as usual.
+pub fn recompute_all_stale(project: &mut Project) -> usize {
+    let stale = project.stale_sheet_ids();
+    let mut n = 0;
+    for id in stale {
+        let is_analysis = project
+            .get(id)
+            .map(|s| matches!(s.body, SheetBody::Analysis { .. }));
+        let ok = match is_analysis {
+            Some(true) => recompute_analysis_sheet(project, id).is_ok(),
+            Some(false) => recompute_graph_sheet(project, id).is_ok(),
+            None => continue,
+        };
+        if ok {
+            n += 1;
+        }
+    }
+    n
+}
 
 use graphcraft_numeric::NumericError;
 use graphcraft_regression::{simple_linear_regression, OlsFit};

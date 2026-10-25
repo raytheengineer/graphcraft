@@ -13,7 +13,7 @@
 //! Source-hash based staleness is scheduled for M8.4; this slice
 //! leaves `source_hash` as `None`.
 
-use graphcraft_format::{AnalysisSpec, Project, Sheet, SheetBody, SheetId};
+use graphcraft_format::{source_hash, AnalysisSpec, Project, Sheet, SheetBody, SheetId};
 use graphcraft_numeric::NumericError;
 use graphcraft_table::{AnyTable, ColumnTable};
 use serde_json::{json, Value};
@@ -89,14 +89,15 @@ pub fn add_analysis_sheet(
     source: SheetId,
     spec: AnalysisSpec,
 ) -> Result<SheetId, AnalysisError> {
-    let table = project
+    let sheet = project
         .get(source)
         .ok_or(AnalysisError::SourceMissing(source))?;
-    let table = match &table.body {
+    let table = match &sheet.body {
         SheetBody::Data { table } => table.clone(),
         _ => return Err(AnalysisError::SourceNotData(source)),
     };
     let title = spec.default_title();
+    let hash = source_hash(&table);
     let result = match run_analysis(&table, &spec) {
         Ok(v) => v,
         Err(e) => json!({ "error": format!("{e}") }),
@@ -109,10 +110,45 @@ pub fn add_analysis_sheet(
             source,
             spec,
             result,
-            source_hash: None,
+            source_hash: Some(hash),
         },
     });
     Ok(id)
+}
+
+/// Re-run the analysis stored at `id`, replacing its cached result
+/// and refreshing its `source_hash`. Fails only if the sheet or
+/// its source has disappeared; a compute failure is persisted as
+/// an error-shaped result, same as [`add_analysis_sheet`].
+pub fn recompute_analysis_sheet(project: &mut Project, id: SheetId) -> Result<(), AnalysisError> {
+    let (source, spec) = match project.get(id) {
+        Some(s) => match &s.body {
+            SheetBody::Analysis { source, spec, .. } => (*source, spec.clone()),
+            _ => return Err(AnalysisError::SourceNotData(id)),
+        },
+        None => return Err(AnalysisError::SourceMissing(id)),
+    };
+    let table = project
+        .data_sheet_table(source)
+        .ok_or(AnalysisError::SourceMissing(source))?
+        .clone();
+    let hash = source_hash(&table);
+    let result = match run_analysis(&table, &spec) {
+        Ok(v) => v,
+        Err(e) => json!({ "error": format!("{e}") }),
+    };
+    if let Some(sheet) = project.get_mut(id) {
+        if let SheetBody::Analysis {
+            result: r,
+            source_hash: h,
+            ..
+        } = &mut sheet.body
+        {
+            *r = result;
+            *h = Some(hash);
+        }
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------
@@ -381,6 +417,35 @@ mod tests {
         // 1 Data + 6 Analysis.
         assert_eq!(p.data_sheet_count(), 1);
         assert_eq!(p.analysis_sheet_count(), 6);
+    }
+
+    #[test]
+    fn mutating_source_marks_dependents_stale() {
+        use graphcraft_format::{source_hash, SheetStatus};
+        let (mut p, src) = sample_project();
+        let ana = add_analysis_sheet(&mut p, src, AnalysisSpec::Descriptives).unwrap();
+        assert_eq!(p.sheet_status(ana), SheetStatus::Fresh);
+
+        // Reach into the source table and push a row.
+        if let SheetBody::Data {
+            table: graphcraft_table::AnyTable::Column(t),
+        } = &mut p.get_mut(src).unwrap().body
+        {
+            t.columns[0].values.push(Some(99.0));
+        }
+
+        // Now the analysis is stale against the new source hash.
+        assert_eq!(p.sheet_status(ana), SheetStatus::Stale);
+
+        // Recompute refreshes the hash and (re-computes) the result.
+        recompute_analysis_sheet(&mut p, ana).unwrap();
+        assert_eq!(p.sheet_status(ana), SheetStatus::Fresh);
+
+        // And the stored hash matches the current source.
+        let current = source_hash(p.data_sheet_table(src).unwrap());
+        if let SheetBody::Analysis { source_hash: h, .. } = &p.get(ana).unwrap().body {
+            assert_eq!(h.as_deref(), Some(current.as_str()));
+        }
     }
 
     #[test]
