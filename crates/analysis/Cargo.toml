@@ -12,6 +12,7 @@ description = "L4: analysis definitions, inputs, options, results tree."
 graphcraft_format = { path = "../format" }
 graphcraft_numeric = { path = "../numeric" }
 graphcraft_plot = { path = "../plot" }
+graphcraft_render = { path = "../render" }
 graphcraft_stats = { path = "../stats" }
 graphcraft_regression = { path = "../regression" }
 graphcraft_table = { path = "../table" }

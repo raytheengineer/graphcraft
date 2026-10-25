@@ -23,8 +23,8 @@ use graphcraft_analysis::{
     recompute_analysis_sheet, recompute_graph_sheet,
 };
 use graphcraft_format::{
-    source_hash as table_source_hash, AnalysisSpec, Document, GraphSpec, Project, Sheet, SheetBody,
-    SheetId, SheetStatus,
+    source_hash as table_source_hash, AnalysisSpec, Document, GraphSpec, LayoutContent, LayoutItem,
+    Project, Sheet, SheetBody, SheetId, SheetStatus,
 };
 use graphcraft_table::{AnyTable, ColumnTable};
 use serde_json::{json, Value};
@@ -240,6 +240,80 @@ export_fn!(
 );
 
 export_fn!(
+    /// Create a new, empty Layout sheet (US-letter page).
+    pub fn add_layout(title: &str) -> String {
+        with_project(|p| {
+            let id = p.add_layout_sheet(if title.is_empty() {
+                "Figure".to_string()
+            } else {
+                title.to_string()
+            });
+            json!({ "id": id.0 }).to_string()
+        })
+    }
+);
+
+export_fn!(
+    /// Append a graph reference to a Layout sheet.
+    pub fn add_layout_graph_item(
+        layout: u64,
+        graph: u64,
+        x_pt: f64,
+        y_pt: f64,
+        width_pt: f64,
+        height_pt: f64,
+    ) -> String {
+        let layout = SheetId(layout);
+        let graph = SheetId(graph);
+        with_project(|p| {
+            match p.add_layout_item(
+                layout,
+                LayoutItem {
+                    x_pt,
+                    y_pt,
+                    width_pt,
+                    height_pt,
+                    content: LayoutContent::Graph { sheet: graph },
+                },
+            ) {
+                Ok(()) => json!({ "ok": true }).to_string(),
+                Err(e) => err_json(e),
+            }
+        })
+    }
+);
+
+export_fn!(
+    /// Append an analysis reference to a Layout sheet.
+    pub fn add_layout_analysis_item(
+        layout: u64,
+        analysis: u64,
+        x_pt: f64,
+        y_pt: f64,
+        width_pt: f64,
+        height_pt: f64,
+    ) -> String {
+        let layout = SheetId(layout);
+        let analysis = SheetId(analysis);
+        with_project(|p| {
+            match p.add_layout_item(
+                layout,
+                LayoutItem {
+                    x_pt,
+                    y_pt,
+                    width_pt,
+                    height_pt,
+                    content: LayoutContent::Analysis { sheet: analysis },
+                },
+            ) {
+                Ok(()) => json!({ "ok": true }).to_string(),
+                Err(e) => err_json(e),
+            }
+        })
+    }
+);
+
+export_fn!(
     pub fn delete_sheet(id_u64: u64) -> String {
         let id = SheetId(id_u64);
         with_project(|p| {
@@ -324,9 +398,10 @@ fn sheet_summary_json(p: &Project, s: &Sheet) -> Value {
         SheetBody::Data { .. } => "data",
         SheetBody::Analysis { .. } => "analysis",
         SheetBody::Graph { .. } => "graph",
+        SheetBody::Layout { .. } => "layout",
     };
     let (source, spec_id) = match &s.body {
-        SheetBody::Data { .. } => (None, None),
+        SheetBody::Data { .. } | SheetBody::Layout { .. } => (None, None),
         SheetBody::Analysis { source, spec, .. } => (Some(source.0), Some(spec.id())),
         SheetBody::Graph { source, spec, .. } => (Some(source.0), Some(spec.id())),
     };
@@ -411,6 +486,30 @@ fn sheet_detail_json(p: &Project, id: SheetId) -> String {
                 }
                 Err(e) => {
                     out["error"] = Value::String(e);
+                }
+            }
+            out.to_string()
+        }
+        SheetBody::Layout {
+            page_width_pt,
+            page_height_pt,
+            items,
+        } => {
+            let mut out = json!({
+                "id": id.0,
+                "title": sheet.title,
+                "kind": "layout",
+                "status": status,
+                "page_width_pt": page_width_pt,
+                "page_height_pt": page_height_pt,
+                "items": items,
+            });
+            match graphcraft_analysis::build_layout_svg(p, id) {
+                Ok(svg) => {
+                    out["svg"] = Value::String(svg);
+                }
+                Err(e) => {
+                    out["error"] = Value::String(format!("{e}"));
                 }
             }
             out.to_string()

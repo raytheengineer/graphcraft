@@ -146,6 +146,10 @@ dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; }
     <h2>Graphs</h2>
     <ul id="list-graph" class="sheet-list"></ul>
     <button class="add-btn" id="btn-add-graph">+ New graph</button>
+
+    <h2>Layouts</h2>
+    <ul id="list-layout" class="sheet-list"></ul>
+    <button class="add-btn" id="btn-add-layout">+ New layout</button>
   </aside>
 
   <section id="detail">
@@ -237,9 +241,11 @@ function render() {
   const data = s.sheets.filter(x => x.kind === 'data');
   const ana  = s.sheets.filter(x => x.kind === 'analysis');
   const grp  = s.sheets.filter(x => x.kind === 'graph');
+  const lay  = s.sheets.filter(x => x.kind === 'layout');
   renderList('list-data', data);
   renderList('list-analysis', ana);
   renderList('list-graph', grp);
+  renderList('list-layout', lay);
   if (state.active && !s.sheets.find(x => x.id === state.active)) {
     state.active = null;
   }
@@ -292,8 +298,33 @@ function renderDetail() {
     body = d.svg
       ? `<div class="svg-wrap">${d.svg}</div>`
       : `<p class="error">couldn't build scene: ${escapeHtml(d.error || 'unknown')}</p>`;
+  } else if (d.kind === 'layout') {
+    body = renderLayoutPane(d);
   }
   el.innerHTML = titleRow + (d.kind === 'data' ? deleteOnlyControls : controls) + body;
+}
+
+function renderLayoutPane(d) {
+  const svg = d.svg
+    ? `<div class="svg-wrap">${d.svg}</div>`
+    : `<p class="error">${escapeHtml(d.error || 'empty layout')}</p>`;
+  const items = (d.items || []).map((item, i) => {
+    const label = item.content.kind === 'graph'
+      ? `graph #${item.content.sheet}`
+      : item.content.kind === 'analysis'
+        ? `analysis #${item.content.sheet}`
+        : 'text';
+    return `<li>#${i}: ${label} at (${item.x_pt.toFixed(0)}, ${item.y_pt.toFixed(0)}) · ${item.width_pt.toFixed(0)}×${item.height_pt.toFixed(0)}</li>`;
+  }).join('');
+  return `
+    <div class="controls">
+      <button onclick="window.gc.addGraphToLayout(${d.id})">+ Add graph</button>
+      <button onclick="window.gc.addAnalysisToLayout(${d.id})">+ Add analysis</button>
+    </div>
+    <p class="meta">Page ${d.page_width_pt} × ${d.page_height_pt} pt. ${(d.items || []).length} items.</p>
+    <ul class="meta" style="padding-left:16px;margin:4px 0 12px">${items}</ul>
+    ${svg}
+  `;
 }
 
 function renderDataGrid(d) {
@@ -378,6 +409,40 @@ window.gc = {
     if (state.active === id) state.active = null;
     render();
   },
+  addGraphToLayout(layoutId) {
+    const s = summary();
+    const graphs = s.sheets.filter(x => x.kind === 'graph');
+    if (graphs.length === 0) { alert('Add a Graph sheet first.'); return; }
+    const choice = prompt(
+      'Which graph sheet id?\n' + graphs.map(g => `  #${g.id}  ${g.title}`).join('\n'),
+      String(graphs[0].id));
+    if (!choice) return;
+    const gid = Number(choice);
+    const spec = prompt('Position as "x y width height" in points:', '36 36 300 220');
+    if (!spec) return;
+    const [x, y, w, h] = spec.trim().split(/\s+/).map(Number);
+    const r = JSON.parse(wasm.add_layout_graph_item(
+      BigInt(layoutId), BigInt(gid), x, y, w, h));
+    if (r.error) alert(r.error);
+    render();
+  },
+  addAnalysisToLayout(layoutId) {
+    const s = summary();
+    const anas = s.sheets.filter(x => x.kind === 'analysis');
+    if (anas.length === 0) { alert('Add an Analysis sheet first.'); return; }
+    const choice = prompt(
+      'Which analysis sheet id?\n' + anas.map(a => `  #${a.id}  ${a.title}`).join('\n'),
+      String(anas[0].id));
+    if (!choice) return;
+    const aid = Number(choice);
+    const spec = prompt('Position as "x y width height" in points:', '36 280 300 220');
+    if (!spec) return;
+    const [x, y, w, h] = spec.trim().split(/\s+/).map(Number);
+    const r = JSON.parse(wasm.add_layout_analysis_item(
+      BigInt(layoutId), BigInt(aid), x, y, w, h));
+    if (r.error) alert(r.error);
+    render();
+  },
 };
 
 (async () => {
@@ -452,6 +517,16 @@ window.gc = {
     state.active = Number(r.id);
     render();
   });
+
+  // Add layout
+  document.getElementById('btn-add-layout').onclick = () => {
+    const title = prompt('Layout title:', 'Figure 1');
+    if (title === null) return;
+    const r = JSON.parse(wasm.add_layout(title));
+    if (r.error) { alert(r.error); return; }
+    state.active = Number(r.id);
+    render();
+  };
 
   // Add graph
   const dlgGraph = document.getElementById('dlg-graph');

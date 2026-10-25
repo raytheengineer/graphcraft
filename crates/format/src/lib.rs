@@ -87,6 +87,56 @@ pub enum SheetBody {
         #[serde(default)]
         source_hash: Option<String>,
     },
+    /// A page layout composing multiple graphs / analyses / text
+    /// blocks onto one printable sheet. All positions are in
+    /// points (1 pt = 1/72 in).
+    Layout {
+        #[serde(default = "default_page_pt")]
+        page_width_pt: f64,
+        #[serde(default = "default_page_height_pt")]
+        page_height_pt: f64,
+        #[serde(default)]
+        items: Vec<LayoutItem>,
+    },
+}
+
+fn default_page_pt() -> f64 {
+    612.0
+}
+fn default_page_height_pt() -> f64 {
+    792.0
+}
+
+/// One placed item on a layout page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LayoutItem {
+    pub x_pt: f64,
+    pub y_pt: f64,
+    pub width_pt: f64,
+    pub height_pt: f64,
+    pub content: LayoutContent,
+}
+
+/// What a layout item points at.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum LayoutContent {
+    /// A reference to a Graph sheet; the layout renders that
+    /// sheet's current scene at its placement.
+    Graph { sheet: SheetId },
+    /// A reference to an Analysis sheet; the layout renders a
+    /// text block of the cached result.
+    Analysis { sheet: SheetId },
+    /// A plain text block.
+    Text {
+        text: String,
+        #[serde(default = "default_text_size")]
+        font_size_pt: f64,
+    },
+}
+
+fn default_text_size() -> f64 {
+    11.0
 }
 
 /// Which graph to build from a data sheet.
@@ -307,6 +357,43 @@ impl Project {
             .count()
     }
 
+    /// Count sheets whose body is a Layout sheet.
+    pub fn layout_sheet_count(&self) -> usize {
+        self.sheets
+            .iter()
+            .filter(|s| matches!(s.body, SheetBody::Layout { .. }))
+            .count()
+    }
+
+    /// Append a Layout sheet with a US-letter default page.
+    pub fn add_layout_sheet(&mut self, title: impl Into<String>) -> SheetId {
+        self.add_sheet(
+            title,
+            SheetBody::Layout {
+                page_width_pt: default_page_pt(),
+                page_height_pt: default_page_height_pt(),
+                items: Vec::new(),
+            },
+        )
+    }
+
+    /// Append an item to an existing Layout sheet. Fails if the
+    /// id is not a Layout.
+    pub fn add_layout_item(
+        &mut self,
+        layout: SheetId,
+        item: LayoutItem,
+    ) -> Result<(), &'static str> {
+        match self.get_mut(layout).map(|s| &mut s.body) {
+            Some(SheetBody::Layout { items, .. }) => {
+                items.push(item);
+                Ok(())
+            }
+            Some(_) => Err("not a layout sheet"),
+            None => Err("layout sheet not found"),
+        }
+    }
+
     /// If `id` refers to a Data sheet, return its table.
     pub fn data_sheet_table(&self, id: SheetId) -> Option<&AnyTable> {
         match self.get(id)?.body {
@@ -325,7 +412,7 @@ impl Project {
             None => return SheetStatus::Unknown,
         };
         let (source, recorded) = match &sheet.body {
-            SheetBody::Data { .. } => return SheetStatus::Fresh,
+            SheetBody::Data { .. } | SheetBody::Layout { .. } => return SheetStatus::Fresh,
             SheetBody::Analysis {
                 source,
                 source_hash,

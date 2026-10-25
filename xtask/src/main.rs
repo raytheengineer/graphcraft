@@ -99,7 +99,7 @@ fn layers() -> Result<()> {
         ("graphcraft_analysis", 4),
         ("graphcraft_plot", 4),
         ("graphcraft_format", 4),
-        ("graphcraft_render", 5),
+        ("graphcraft_render", 4),
         ("graphcraft_engine", 5),
         ("graphcraft_web", 5),
         ("graphcraft_ui_egui", 6),

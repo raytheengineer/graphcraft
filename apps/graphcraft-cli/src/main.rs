@@ -292,6 +292,9 @@ fn do_chi2(csv: &str) -> ExitCode {
         Some(SheetBody::Graph { .. }) => {
             return err_out("first sheet is Graph; chi2 needs Data");
         }
+        Some(SheetBody::Layout { .. }) => {
+            return err_out("first sheet is Layout; chi2 needs Data");
+        }
         None => return err_out("empty project"),
     };
     let mut counts: Vec<Vec<u64>> = Vec::with_capacity(table.row_titles.len().max(1));
@@ -434,6 +437,7 @@ fn load_column_table(src: &str) -> Result<ColumnTable, ExitCode> {
             Err(err_out("expected a Data sheet, got an Analysis sheet"))
         }
         Some(SheetBody::Graph { .. }) => Err(err_out("expected a Data sheet, got a Graph sheet")),
+        Some(SheetBody::Layout { .. }) => Err(err_out("expected a Data sheet, got a Layout sheet")),
         None => Err(err_out("empty project")),
     }
 }

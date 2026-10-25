@@ -6,8 +6,10 @@
 //! to drive output-parity acceptance tests.
 
 pub mod graph;
+pub mod layout;
 pub mod project;
 pub use graph::{add_graph_sheet, build_graph_scene, recompute_graph_sheet, GraphError};
+pub use layout::{build_layout_svg, LayoutError};
 pub use project::{add_analysis_sheet, recompute_analysis_sheet, run_analysis, AnalysisError};
 
 use graphcraft_format::{Project, SheetBody};

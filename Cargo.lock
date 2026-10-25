@@ -79,6 +79,7 @@ dependencies = [
  "graphcraft_numeric",
  "graphcraft_plot",
  "graphcraft_regression",
+ "graphcraft_render",
  "graphcraft_stats",
  "graphcraft_table",
  "serde_json",

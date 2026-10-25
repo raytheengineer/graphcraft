@@ -209,6 +209,9 @@ fn load_csv(csv: &str) -> Result<ColumnTable, (i32, String)> {
         Some(SheetBody::Graph { .. }) => {
             Err((-32603, "expected a Data sheet, got a Graph sheet".into()))
         }
+        Some(SheetBody::Layout { .. }) => {
+            Err((-32603, "expected a Data sheet, got a Layout sheet".into()))
+        }
         None => Err((-32603, "empty project".into())),
     }
 }
