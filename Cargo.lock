@@ -71,7 +71,9 @@ version = "0.0.1"
 name = "graphcraft_plot"
 version = "0.0.1"
 dependencies = [
+ "graphcraft_numeric",
  "graphcraft_table",
+ "serde",
 ]
 
 [[package]]

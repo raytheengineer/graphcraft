@@ -1,10 +1,9 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M3 complete, M4 complete.** Statistics
-through M3 plus the full regression stack: linear OLS, Levenberg-
-Marquardt nonlinear fitting, and a six-model published library with
-data-driven starting values. NIST StRD *Norris* and *Misra1a* plus
-closed-form synthetic parity across the library. 46 parity rows live.
+Status headline (2026-10-25): **M3 + M4 complete, M5.1 shipped.**
+Statistics, regression (OLS + LM + model library), and the first
+scene builder + SVG renderer. The visual half of the project begins.
+46 numeric parity rows live; graphs tested by structural invariants.
 
 ## Honest assessment (2026-10-25)
 
@@ -127,6 +126,14 @@ for everything after.
       Early-step convergence check added to LM. 7 new closed-form
       synthetic parity rows at 1e-6 or tighter. M4 complete.
 ### M5 — Core graphs (XY, Column, Grouped, Survival) + SVG/PDF export
+- [x] M5.1 — Scene model (Axis / Series / MarkerStyle / Color /
+      Legend) at L4; nice-number tick layout via Heckbert (1990);
+      XY scatter builder (`xy_scene`, `xy_scene_from_points`); SVG
+      renderer at L5 (`render_svg`) emitting a standalone document
+      with inline attributes only (passes the WASM gate). Structural
+      tests verify ticks, titles, series elements, XML escaping.
+- [ ] M5.2 — Column / Grouped / Survival scene builders + overlays
+- [ ] M5.3 — PDF export
 ### M6 — Remaining analyses + graph types
 ### M7 — Polish, perf budgets, MCP, web build
 

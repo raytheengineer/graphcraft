@@ -42,6 +42,7 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | Linear regression (OLS)       | `graphcraft_regression::{ols_fit, simple_linear_regression}` | `xy_simple_regression`, `column_simple_regression` | NIST StRD *Norris* at 1e-11 |
 | Nonlinear fit (Levenberg-Marquardt) | `graphcraft_regression::levenberg_marquardt` | (model library in M4.3) | NIST StRD *Misra1a* at 1e-6 |
 | Published model library       | `graphcraft_regression::{fit_model, NonlinearModel, OneSiteBinding, HillBinding, ExpDecayOnePhase, ExpGrowth, LogDoseResponse, Line}` | — | Closed-form synthetic data at 1e-6+ |
+| XY scatter graph (scene + SVG) | `graphcraft_plot::{Scene, xy_scene, xy_scene_from_points}` + `graphcraft_render::render_svg` | — | Structural (ticks, labels, elements) |
 
 ## Descriptive statistics (M3.0)
 

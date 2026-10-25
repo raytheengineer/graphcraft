@@ -9,7 +9,9 @@ authors.workspace = true
 description = "L4: scene graph for graphs (axes, series, legends, annotations)."
 
 [dependencies]
+graphcraft_numeric = { path = "../numeric" }
 graphcraft_table = { path = "../table" }
+serde = { workspace = true }
 
 [lints]
 workspace = true
