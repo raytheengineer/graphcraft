@@ -10,10 +10,12 @@
 //! M9.3; the eframe-web runner in M9.4; file dialogs in M9.5;
 //! in-grid data editing in M9.6; the legend registry in M9.7.
 
+pub mod scene_painter;
+
 use egui::{Color32, ComboBox, Modal, Panel, RichText, ScrollArea, TextEdit, Ui};
 use graphcraft_analysis::{
-    add_analysis_sheet, add_graph_sheet, recompute_all_stale, recompute_analysis_sheet,
-    recompute_graph_sheet,
+    add_analysis_sheet, add_graph_sheet, build_graph_scene, recompute_all_stale,
+    recompute_analysis_sheet, recompute_graph_sheet,
 };
 use graphcraft_format::{
     AnalysisSpec, Document, GraphColormap, GraphErrorBars, GraphSpec, Project, SheetBody, SheetId,
@@ -343,17 +345,42 @@ impl AppState {
                     ui.monospace(text);
                 });
             }
-            Some(SheetBody::Graph { spec, .. }) => {
+            Some(SheetBody::Graph { source, spec, .. }) => {
                 if spec.is_placeholder() {
                     self.render_placeholder_graph(ui, id);
                 } else {
-                    ui.label("Graph rendering — native egui painter lands in M9.4.");
+                    let source = *source;
+                    let spec = spec.clone();
+                    self.render_graph_scene(ui, source, &spec);
                 }
             }
             Some(SheetBody::Layout { items, .. }) => {
                 ui.label(format!("{} items — composer lands in M9.5.", items.len()));
             }
             None => {}
+        }
+    }
+
+    fn render_graph_scene(
+        &self,
+        ui: &mut Ui,
+        source: SheetId,
+        spec: &graphcraft_format::GraphSpec,
+    ) {
+        let Some(table) = self.project.data_sheet_table(source) else {
+            ui.label(RichText::new("source data sheet is missing").weak());
+            return;
+        };
+        match build_graph_scene(table, spec) {
+            Ok(scene) => {
+                scene_painter::paint_scene(ui, &scene);
+            }
+            Err(e) => {
+                ui.label(
+                    RichText::new(format!("couldn't build scene: {e}"))
+                        .color(Color32::from_rgb(178, 34, 34)),
+                );
+            }
         }
     }
 
