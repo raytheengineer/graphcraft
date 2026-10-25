@@ -112,19 +112,27 @@ fn paint_into(p: &Painter, rect: Rect, scene: &Scene) {
         );
     }
     if let Some(ref t) = scene.y_axis.title {
-        // Rotated 90° counter-clockwise. egui doesn't rotate text
-        // in `painter.text`, so we paint each glyph horizontally
-        // but offset — adequate for titles that are typically a
-        // few words. (A real rotation primitive goes in M10.)
-        let x = plot_px.left() - 42.0 * sx;
-        let y = plot_px.center().y;
-        p.text(
-            Pos2::new(x, y),
-            Align2::CENTER_CENTER,
-            t,
-            prop(11.0 * s),
-            Color32::BLACK,
-        );
+        // Rotate 90° counter-clockwise so the title reads
+        // bottom-to-top up the left edge of the plot. We
+        // lay the galley out horizontally, then stamp a
+        // TextShape with a negative angle so its upper-left
+        // pivot lands at the correct side-of-plot position.
+        let galley = p.layout_no_wrap(t.clone(), prop(11.0 * s), Color32::BLACK);
+        let text_w = galley.size().x;
+        let text_h = galley.size().y;
+        // Place the rotated text so its centre sits on
+        // (plot_left - gap, plot_centre_y).
+        let anchor_x = plot_px.left() - 32.0 * s;
+        let anchor_y = plot_px.center().y;
+        // After rotation by -π/2 radians (counter-clockwise),
+        // the galley's local (0, 0) ends up at `pos`, the local
+        // (width, 0) at `pos + (0, -width)`, and (0, height) at
+        // `pos + (height, 0)`. To centre the text, offset by
+        // (-h/2, +w/2) from the anchor.
+        let pos = Pos2::new(anchor_x - text_h * 0.5, anchor_y + text_w * 0.5);
+        let mut shape = egui::epaint::TextShape::new(pos, galley, Color32::BLACK);
+        shape.angle = -std::f32::consts::FRAC_PI_2;
+        p.add(egui::Shape::Text(shape));
     }
 
     // X ticks.
