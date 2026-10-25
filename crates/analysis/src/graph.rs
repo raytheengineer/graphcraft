@@ -60,6 +60,9 @@ impl From<NumericError> for GraphError {
 /// Build a scene from `(table, spec)`.
 pub fn build_graph_scene(table: &AnyTable, spec: &GraphSpec) -> Result<Scene, GraphError> {
     match spec {
+        GraphSpec::Placeholder => Err(GraphError::Unsupported(
+            "graph not configured yet — pick a kind in the detail pane".into(),
+        )),
         GraphSpec::Xy { x, y, title } => build_xy(table, x, y, title.as_deref()),
         GraphSpec::Column {
             title,

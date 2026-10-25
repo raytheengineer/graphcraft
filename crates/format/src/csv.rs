@@ -12,7 +12,7 @@
 //!
 //! Input is capped at 64 MiB to bound allocation on untrusted input.
 
-use graphcraft_table::{Column, ColumnTable};
+use graphcraft_table::{AnyTable, Column, ColumnTable, XyTable, YDataset, YFormat};
 
 use crate::{Document, FormatError, Project};
 
@@ -74,6 +74,52 @@ pub fn import_csv(bytes: &[u8]) -> Result<Document, FormatError> {
     let mut project = Project::new("Imported CSV");
     project.add_data_sheet("Imported CSV", table.into());
     Ok(Document::from_project(project))
+}
+
+/// Parse a CSV like [`import_csv`] but produce a column table
+/// directly, with no `Project` wrapper. Useful when the caller is
+/// about to convert to another table shape (e.g. [`csv_to_xy`]) or
+/// append to an existing project.
+pub fn parse_csv_to_column_table(bytes: &[u8]) -> Result<ColumnTable, FormatError> {
+    let doc = import_csv(bytes)?;
+    match doc.project.sheets.into_iter().next().map(|s| s.body) {
+        Some(crate::SheetBody::Data {
+            table: AnyTable::Column(t),
+        }) => Ok(t),
+        _ => Err(FormatError::CsvEmpty),
+    }
+}
+
+/// Reshape a parsed CSV into an `XyTable`: the first column of
+/// `t` becomes the shared x; every remaining column becomes a
+/// `SingleY` dataset. Returns `Err(CsvEmpty)` on fewer than two
+/// columns.
+pub fn csv_to_xy(t: ColumnTable) -> Result<XyTable, FormatError> {
+    if t.columns.len() < 2 {
+        return Err(FormatError::CsvEmpty);
+    }
+    let mut iter = t.columns.into_iter();
+    // `len >= 2` was checked above; the first `next()` is guaranteed Some.
+    let x_col = match iter.next() {
+        Some(c) => c,
+        None => return Err(FormatError::CsvEmpty),
+    };
+    let datasets = iter
+        .map(|col| YDataset {
+            title: col.title,
+            format: YFormat::SingleY,
+            subcolumns: vec![Column {
+                title: String::new(),
+                values: col.values,
+            }],
+        })
+        .collect();
+    Ok(XyTable {
+        title: t.title,
+        x_title: x_col.title,
+        x: x_col.values,
+        datasets,
+    })
 }
 
 fn parse_rows(text: &str) -> Result<Vec<Vec<String>>, FormatError> {

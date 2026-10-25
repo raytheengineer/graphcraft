@@ -14,7 +14,7 @@
 //! old file becomes one `Sheet` of kind `Data`.
 
 pub mod csv;
-pub use csv::import_csv;
+pub use csv::{csv_to_xy, import_csv, parse_csv_to_column_table};
 
 use graphcraft_table::AnyTable;
 use serde::{Deserialize, Serialize};
@@ -147,6 +147,10 @@ fn default_text_size() -> f64 {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum GraphSpec {
+    /// A graph slot that has been bound to a data sheet but not
+    /// yet configured. The UI prompts the user to pick a real
+    /// `GraphSpec` when they first click a placeholder graph.
+    Placeholder,
     /// Scatter of two columns from a Column data sheet.
     Xy {
         x: String,
@@ -190,6 +194,7 @@ pub enum GraphSpec {
 impl GraphSpec {
     pub fn id(&self) -> &'static str {
         match self {
+            Self::Placeholder => "placeholder",
             Self::Xy { .. } => "xy",
             Self::Column { .. } => "column",
             Self::Grouped { .. } => "grouped",
@@ -200,12 +205,17 @@ impl GraphSpec {
 
     pub fn default_title(&self) -> String {
         match self {
+            Self::Placeholder => "New graph".to_string(),
             Self::Xy { x, y, .. } => format!("Scatter: {y} vs {x}"),
             Self::Column { .. } => "Column plot".to_string(),
             Self::Grouped { .. } => "Grouped plot".to_string(),
             Self::Survival { .. } => "Survival curves".to_string(),
             Self::Heatmap { .. } => "Heatmap".to_string(),
         }
+    }
+
+    pub fn is_placeholder(&self) -> bool {
+        matches!(self, Self::Placeholder)
     }
 }
 

@@ -19,6 +19,7 @@ use graphcraft_format::{
     AnalysisSpec, Document, GraphColormap, GraphErrorBars, GraphSpec, Project, SheetBody, SheetId,
     SheetStatus,
 };
+use graphcraft_table::AnyTable;
 
 /// Live state the UI maintains across frames.
 pub struct AppState {
@@ -26,6 +27,19 @@ pub struct AppState {
     pub selected: Option<SheetId>,
     pub status_line: String,
     modal: ModalKind,
+    /// Transient fields for the inline "configure this graph" form
+    /// shown when a Placeholder graph is selected.
+    configure: ConfigureGraphForm,
+}
+
+#[derive(Default)]
+struct ConfigureGraphForm {
+    for_sheet: Option<SheetId>,
+    kind: GraphKindChoice,
+    x: String,
+    y: String,
+    error_bars: GraphErrorBars,
+    colormap: GraphColormap,
 }
 
 impl Default for AppState {
@@ -33,10 +47,9 @@ impl Default for AppState {
         Self {
             project: Project::new("Untitled project"),
             selected: None,
-            status_line: String::from(
-                "GraphCraft M9.2 — click a + button in the sidebar to add a sheet.",
-            ),
+            status_line: String::from("GraphCraft M9.3 — click + Data from CSV to begin."),
             modal: ModalKind::None,
+            configure: ConfigureGraphForm::default(),
         }
     }
 }
@@ -49,6 +62,7 @@ enum ModalKind {
     AddData {
         title: String,
         csv: String,
+        table_kind: TableKindChoice,
     },
     AddAnalysis {
         source: Option<SheetId>,
@@ -70,6 +84,24 @@ enum ModalKind {
     AddLayout {
         title: String,
     },
+}
+
+/// Which table shape "Add data" should produce.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+enum TableKindChoice {
+    #[default]
+    Column,
+    Xy,
+}
+
+impl TableKindChoice {
+    const ALL: [Self; 2] = [Self::Column, Self::Xy];
+    fn label(self) -> &'static str {
+        match self {
+            Self::Column => "Column (grouped values per column)",
+            Self::Xy => "XY (first column is x, remaining columns are y datasets)",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -173,6 +205,7 @@ impl AppState {
                 self.modal = ModalKind::AddData {
                     title: String::from("Imported data"),
                     csv: String::from("a,b\n1,10\n2,20\n3,30\n4,40\n5,50"),
+                    table_kind: TableKindChoice::Column,
                 };
             }
 
@@ -310,8 +343,12 @@ impl AppState {
                     ui.monospace(text);
                 });
             }
-            Some(SheetBody::Graph { .. }) => {
-                ui.label("Graph rendering — native egui painter lands in M9.3.");
+            Some(SheetBody::Graph { spec, .. }) => {
+                if spec.is_placeholder() {
+                    self.render_placeholder_graph(ui, id);
+                } else {
+                    ui.label("Graph rendering — native egui painter lands in M9.4.");
+                }
             }
             Some(SheetBody::Layout { items, .. }) => {
                 ui.label(format!("{} items — composer lands in M9.5.", items.len()));
@@ -320,12 +357,110 @@ impl AppState {
         }
     }
 
+    fn render_placeholder_graph(&mut self, ui: &mut Ui, graph_id: SheetId) {
+        // Reset the form when we switch to a different sheet.
+        if self.configure.for_sheet != Some(graph_id) {
+            self.configure = ConfigureGraphForm {
+                for_sheet: Some(graph_id),
+                ..Default::default()
+            };
+        }
+        ui.label(
+            RichText::new("This graph has no visualization yet. Pick a kind and fill the fields.")
+                .weak(),
+        );
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.label("Kind");
+            ComboBox::from_id_salt("placeholder-kind")
+                .selected_text(self.configure.kind.label())
+                .show_ui(ui, |ui| {
+                    for k in GraphKindChoice::ALL {
+                        ui.selectable_value(&mut self.configure.kind, k, k.label());
+                    }
+                });
+        });
+        match self.configure.kind {
+            GraphKindChoice::Xy => {
+                labeled(ui, "x column", &mut self.configure.x);
+                labeled(ui, "y column", &mut self.configure.y);
+            }
+            GraphKindChoice::Column => {
+                ui.label("Error bars");
+                ComboBox::from_id_salt("placeholder-errorbars")
+                    .selected_text(error_bars_label(self.configure.error_bars))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.configure.error_bars,
+                            GraphErrorBars::Sd,
+                            "SD",
+                        );
+                        ui.selectable_value(
+                            &mut self.configure.error_bars,
+                            GraphErrorBars::Sem,
+                            "SEM",
+                        );
+                        ui.selectable_value(
+                            &mut self.configure.error_bars,
+                            GraphErrorBars::None,
+                            "None",
+                        );
+                    });
+            }
+            GraphKindChoice::Heatmap => {
+                ui.label("Colormap");
+                ComboBox::from_id_salt("placeholder-cmap")
+                    .selected_text(colormap_label(self.configure.colormap))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.configure.colormap,
+                            GraphColormap::DivergingBlueRed,
+                            "Blue → red",
+                        );
+                        ui.selectable_value(
+                            &mut self.configure.colormap,
+                            GraphColormap::Grayscale,
+                            "Grayscale",
+                        );
+                        ui.selectable_value(
+                            &mut self.configure.colormap,
+                            GraphColormap::SequentialBlue,
+                            "Sequential blue",
+                        );
+                    });
+            }
+        }
+        ui.add_space(8.0);
+        if ui.button("Apply").clicked() {
+            let spec = graph_spec_from(
+                self.configure.kind,
+                &self.configure.x,
+                &self.configure.y,
+                self.configure.error_bars,
+                self.configure.colormap,
+            );
+            if let Some(sheet) = self.project.get_mut(graph_id) {
+                if let SheetBody::Graph { spec: existing, .. } = &mut sheet.body {
+                    *existing = spec.clone();
+                    sheet.title = spec.default_title();
+                }
+            }
+            self.status_line = format!("configured graph #{}", graph_id.0);
+            self.configure = ConfigureGraphForm::default();
+        }
+    }
+
     fn render_data_preview(&self, ui: &mut Ui, table: &graphcraft_table::AnyTable) {
         use graphcraft_table::AnyTable;
-        let AnyTable::Column(t) = table else {
-            ui.label("(non-column data table — preview grid is in M9.6)");
-            return;
+        let t: std::borrow::Cow<graphcraft_table::ColumnTable> = match table {
+            AnyTable::Column(t) => std::borrow::Cow::Borrowed(t),
+            AnyTable::Xy(xy) => std::borrow::Cow::Owned(xy_as_column_view(xy)),
+            _ => {
+                ui.label("(preview grid for this table kind lands in M9.6)");
+                return;
+            }
         };
+        let t = t.as_ref();
         let n_rows = t.columns.iter().map(|c| c.values.len()).max().unwrap_or(0);
         let shown = n_rows.min(50);
         ScrollArea::both().show(ui, |ui| {
@@ -398,7 +533,11 @@ impl AppState {
         let mut m = std::mem::take(&mut self.modal);
         let result = match &mut m {
             ModalKind::None => ModalResult::Keep,
-            ModalKind::AddData { title, csv } => self.show_add_data_modal(&ctx, title, csv),
+            ModalKind::AddData {
+                title,
+                csv,
+                table_kind,
+            } => self.show_add_data_modal(&ctx, title, csv, table_kind),
             ModalKind::AddAnalysis {
                 source,
                 kind,
@@ -429,53 +568,82 @@ impl AppState {
         ctx: &egui::Context,
         title: &mut String,
         csv: &mut String,
+        table_kind: &mut TableKindChoice,
     ) -> ModalResult {
         let mut outcome = ModalResult::Keep;
         Modal::new("gc-add-data".into()).show(ctx, |ui| {
-            ui.set_min_width(420.0);
+            ui.set_min_width(480.0);
             ui.heading("Add data from CSV");
             ui.add_space(6.0);
-            ui.label("Title");
-            ui.add(TextEdit::singleline(title));
+            labeled(ui, "Title", title);
+            ui.label("Table kind");
+            for k in TableKindChoice::ALL {
+                ui.radio_value(table_kind, k, k.label());
+            }
             ui.label("CSV (first row is headers)");
             ui.add(TextEdit::multiline(csv).desired_rows(10).code_editor());
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new(
+                    "An empty graph sheet is created alongside the data so you can \
+                     configure its visualization next.",
+                )
+                .weak()
+                .small(),
+            );
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui.button("Cancel").clicked() {
                     outcome = ModalResult::Close;
                 }
                 if ui.button("Add").clicked() {
-                    outcome = self.commit_add_data(title, csv);
+                    outcome = self.commit_add_data(title, csv, *table_kind);
                 }
             });
         });
         outcome
     }
 
-    fn commit_add_data(&mut self, title: &str, csv: &str) -> ModalResult {
-        match graphcraft_format::import_csv(csv.as_bytes()) {
-            Ok(doc) => match doc.project.sheets.into_iter().next().map(|s| s.body) {
-                Some(SheetBody::Data { table }) => {
-                    let final_title = if title.is_empty() {
-                        "Imported CSV".to_string()
-                    } else {
-                        title.to_string()
-                    };
-                    let id = self.project.add_data_sheet(final_title.clone(), table);
-                    self.selected = Some(id);
-                    self.status_line = format!("added #{}: {}", id.0, final_title);
-                    ModalResult::Close
-                }
-                _ => {
-                    self.status_line = "CSV did not import as a Data sheet".into();
-                    ModalResult::Keep
-                }
-            },
+    fn commit_add_data(&mut self, title: &str, csv: &str, kind: TableKindChoice) -> ModalResult {
+        let column_table = match graphcraft_format::parse_csv_to_column_table(csv.as_bytes()) {
+            Ok(t) => t,
             Err(e) => {
                 self.status_line = format!("csv import failed: {e}");
-                ModalResult::Keep
+                return ModalResult::Keep;
             }
-        }
+        };
+        let final_title = if title.is_empty() {
+            "Imported CSV".to_string()
+        } else {
+            title.to_string()
+        };
+        let table: AnyTable = match kind {
+            TableKindChoice::Column => AnyTable::Column(column_table),
+            TableKindChoice::Xy => match graphcraft_format::csv_to_xy(column_table) {
+                Ok(xy) => AnyTable::Xy(xy),
+                Err(e) => {
+                    self.status_line = format!("XY needs ≥ 2 columns: {e}");
+                    return ModalResult::Keep;
+                }
+            },
+        };
+        let data_id = self.project.add_data_sheet(final_title.clone(), table);
+        // Auto-create a Placeholder graph bound to the fresh data.
+        let graph_id = graphcraft_analysis::add_graph_sheet(
+            &mut self.project,
+            data_id,
+            GraphSpec::Placeholder,
+        )
+        .ok();
+        self.selected = Some(data_id);
+        self.status_line = match graph_id {
+            Some(gid) => format!(
+                "added #{} ({}): data + placeholder graph #{}",
+                data_id.0, final_title, gid.0
+            ),
+            None => format!("added #{}: {}", data_id.0, final_title),
+        };
+        ModalResult::Close
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -783,6 +951,39 @@ fn error_bars_label(e: GraphErrorBars) -> &'static str {
     }
 }
 
+/// Treat an `XyTable` as a flat column view for preview — one
+/// column for the shared x, one per Y subcolumn in order.
+fn xy_as_column_view(xy: &graphcraft_table::XyTable) -> graphcraft_table::ColumnTable {
+    use graphcraft_table::{Column, ColumnTable};
+    let mut columns = Vec::with_capacity(1 + xy.datasets.len() * 2);
+    columns.push(Column {
+        title: if xy.x_title.is_empty() {
+            "x".to_string()
+        } else {
+            xy.x_title.clone()
+        },
+        values: xy.x.clone(),
+    });
+    for ds in &xy.datasets {
+        for sub in &ds.subcolumns {
+            let title = if ds.subcolumns.len() == 1 {
+                ds.title.clone()
+            } else {
+                format!("{} / {}", ds.title, sub.title)
+            };
+            columns.push(Column {
+                title,
+                values: sub.values.clone(),
+            });
+        }
+    }
+    ColumnTable {
+        title: xy.title.clone(),
+        row_titles: Vec::new(),
+        columns,
+    }
+}
+
 fn colormap_label(c: GraphColormap) -> &'static str {
     match c {
         GraphColormap::DivergingBlueRed => "Blue → red",
@@ -813,7 +1014,7 @@ mod tests {
     #[test]
     fn commit_add_data_appends_sheet() {
         let mut s = AppState::default();
-        let _ = s.commit_add_data("test", "a,b\n1,2\n3,4\n");
+        let _ = s.commit_add_data("test", "a,b\n1,2\n3,4\n", TableKindChoice::Column);
         assert_eq!(s.project.data_sheet_count(), 1);
         assert!(s.selected.is_some());
     }
@@ -821,7 +1022,7 @@ mod tests {
     #[test]
     fn commit_add_analysis_requires_source() {
         let mut s = AppState::default();
-        let _ = s.commit_add_data("d", "x,y\n1,2\n2,4\n3,6\n");
+        let _ = s.commit_add_data("d", "x,y\n1,2\n2,4\n3,6\n", TableKindChoice::Column);
         let src = s.first_data_sheet().unwrap();
         let _ = s.commit_add_analysis(src, AnalysisSpec::Descriptives);
         assert_eq!(s.project.analysis_sheet_count(), 1);
