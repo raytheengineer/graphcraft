@@ -65,6 +65,16 @@ for everything after.
       group → subject → replicates). All three with validation and
       `AnyTable` round-trip. M2 complete.
 ### M3 — Descriptive + t-tests + 1-way ANOVA + non-parametric
+- [x] M3.0 — Descriptive statistics (`graphcraft_stats::Descriptives`
+      with n/mean/sd/variance/sem/median/min/max, two-pass
+      Kahan-compensated; `graphcraft_analysis::column_descriptives`
+      wrapping it on a ColumnTable; NIST StRD *Lew* SD row added to
+      the parity matrix, passing at 1e-13)
+- [ ] M3.1 — Student-t distribution + 95% CI of mean + one-sample t
+- [ ] M3.2 — Two-sample t (unpaired Welch default, paired, pooled)
+- [ ] M3.3 — One-way ANOVA + Tukey/Dunnett/Šidák/Bonferroni post-hocs
+- [ ] M3.4 — Non-parametric: Mann-Whitney, Wilcoxon, Kruskal-Wallis,
+      Dunn's post-hoc
 ### M4 — Linear + nonlinear regression (LM + published model library)
 ### M5 — Core graphs (XY, Column, Grouped, Survival) + SVG/PDF export
 ### M6 — Remaining analyses + graph types
@@ -77,6 +87,7 @@ published reference values, not against Prism.
 | Analysis | Reference | Status | Max relative error |
 | --- | --- | --- | --- |
 | mean | NIST StRD *Lew* (univariate, n=200, certified ybar = -177.435000000000) | passing | 1e-13 |
+| sd | NIST StRD *Lew* (certified s = 277.332168044316) | passing | 1e-13 |
 
 ## Known numerical gaps
 _(none logged yet)_

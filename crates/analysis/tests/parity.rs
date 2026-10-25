@@ -100,6 +100,21 @@ fn run(row: &Row) -> f64 {
     match (row.analysis.as_str(), row.statistic.as_str()) {
         ("mean", "mean") => graphcraft_numeric::mean(&xs).unwrap(),
         ("sum", "sum") => graphcraft_numeric::kahan_sum(&xs).unwrap(),
+        ("descriptives", stat) => {
+            let d = graphcraft_stats::Descriptives::of(&xs).unwrap();
+            match stat {
+                "n" => d.n as f64,
+                "mean" => d.mean,
+                "median" => d.median,
+                "min" => d.min,
+                "max" => d.max,
+                "sd" => d.sd.expect("sd requires n>=2"),
+                "variance" => d.variance.expect("variance requires n>=2"),
+                "sem" => d.sem.expect("sem requires n>=2"),
+                "range" => d.range(),
+                other => panic!("unknown descriptive statistic: {other:?}"),
+            }
+        }
         other => panic!("unimplemented analysis: {other:?}"),
     }
 }
