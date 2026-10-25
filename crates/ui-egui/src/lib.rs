@@ -74,6 +74,8 @@ pub struct AppState {
     files: Box<dyn FileService>,
     /// Currently-editing data cell, if any.
     editing: Option<EditingCell>,
+    /// Currently-editing column header, if any.
+    editing_header: Option<EditingHeader>,
 }
 
 /// Which cell the user is currently editing. The buffer carries
@@ -84,6 +86,17 @@ struct EditingCell {
     sheet: SheetId,
     col: usize,
     row: usize,
+    buffer: String,
+}
+
+/// Which column header the user is currently renaming. The
+/// autocomplete popup suggests existing legend-registry keys so
+/// renaming to "placebo" (if that key exists elsewhere) links the
+/// column to the shared styling.
+#[derive(Debug, Clone)]
+struct EditingHeader {
+    sheet: SheetId,
+    col: usize,
     buffer: String,
 }
 
@@ -116,6 +129,7 @@ impl AppState {
             configure: ConfigureGraphForm::default(),
             files,
             editing: None,
+            editing_header: None,
         }
     }
 }
@@ -740,8 +754,8 @@ impl AppState {
                 .striped(true)
                 .spacing(egui::vec2(14.0, 2.0))
                 .show(ui, |ui| {
-                    for t in &titles {
-                        ui.label(RichText::new(t).strong());
+                    for (c, title) in titles.iter().enumerate() {
+                        self.render_header_cell(ui, id, c, title);
                     }
                     ui.end_row();
                     for r in 0..shown {
@@ -759,6 +773,152 @@ impl AppState {
                 );
             }
         });
+    }
+
+    fn render_header_cell(&mut self, ui: &mut Ui, sheet: SheetId, col: usize, current: &str) {
+        let is_editing = self
+            .editing_header
+            .as_ref()
+            .is_some_and(|e| e.sheet == sheet && e.col == col);
+        if is_editing {
+            let (commit, cancel) = self.render_header_editor(ui, sheet, col);
+            if commit {
+                self.commit_header_edit();
+            } else if cancel {
+                self.editing_header = None;
+            }
+        } else {
+            let response = ui
+                .add(egui::Label::new(RichText::new(current).strong()).sense(egui::Sense::click()));
+            if response.clicked() {
+                self.editing_header = Some(EditingHeader {
+                    sheet,
+                    col,
+                    buffer: current.to_string(),
+                });
+            }
+        }
+    }
+
+    fn render_header_editor(&mut self, ui: &mut Ui, sheet: SheetId, col: usize) -> (bool, bool) {
+        // Snapshot suggestion keys first so we don't borrow self
+        // across the TextEdit + popup render.
+        let used_in_this_sheet: std::collections::HashSet<String> =
+            match self.project.get(sheet).map(|s| &s.body) {
+                Some(SheetBody::Data {
+                    table: graphcraft_table::AnyTable::Column(t),
+                }) => t
+                    .columns
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != col)
+                    .map(|(_, c)| c.title.clone())
+                    .collect(),
+                _ => Default::default(),
+            };
+        let buffer_now = self
+            .editing_header
+            .as_ref()
+            .map(|e| e.buffer.clone())
+            .unwrap_or_default();
+        let needle = buffer_now.to_lowercase();
+        let mut suggestions: Vec<(String, String)> = self
+            .project
+            .legend_registry
+            .entries
+            .iter()
+            .filter(|e| !used_in_this_sheet.contains(&e.key))
+            .filter(|e| needle.is_empty() || e.key.to_lowercase().contains(&needle))
+            .filter(|e| e.key != buffer_now)
+            .map(|e| (e.key.clone(), e.display_name.clone()))
+            .collect();
+        suggestions.truncate(8);
+
+        // Edit buffer + text field.
+        let (response, commit, cancel_now) = {
+            let buffer = match self.editing_header.as_mut() {
+                Some(e) => &mut e.buffer,
+                None => return (false, false),
+            };
+            let r = ui.add(
+                TextEdit::singleline(buffer)
+                    .desired_width(120.0)
+                    .font(egui::TextStyle::Monospace),
+            );
+            if !r.has_focus() {
+                r.request_focus();
+            }
+            let commit = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let cancel = ui.input(|i| i.key_pressed(egui::Key::Escape));
+            (r, commit, cancel)
+        };
+
+        // Suggestions popup — only if we have any.
+        if !suggestions.is_empty() {
+            let popup_id = ui.make_persistent_id(("gc-header-popup", sheet.0, col));
+            egui::Popup::from_response(&response)
+                .id(popup_id)
+                .open(response.has_focus() || response.gained_focus())
+                .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                .show(|ui| {
+                    ui.set_min_width(response.rect.width().max(160.0));
+                    ui.label(
+                        RichText::new("Reuse an existing legend key:")
+                            .weak()
+                            .small(),
+                    );
+                    for (key, display) in &suggestions {
+                        let label = if display == key {
+                            key.clone()
+                        } else {
+                            format!("{display} ({key})")
+                        };
+                        if ui.selectable_label(false, label).clicked() {
+                            if let Some(e) = self.editing_header.as_mut() {
+                                e.buffer = key.clone();
+                            }
+                        }
+                    }
+                });
+        }
+        (commit, cancel_now)
+    }
+
+    fn commit_header_edit(&mut self) {
+        use graphcraft_table::AnyTable;
+        let e = match self.editing_header.take() {
+            Some(e) => e,
+            None => return,
+        };
+        let new_title = e.buffer.trim().to_string();
+        if new_title.is_empty() {
+            self.status_line = "header can't be empty".into();
+            return;
+        }
+        let had_change = if let Some(SheetBody::Data {
+            table: AnyTable::Column(t),
+        }) = self.project.get_mut(e.sheet).map(|s| &mut s.body)
+        {
+            if let Some(col) = t.columns.get_mut(e.col) {
+                if col.title != new_title {
+                    col.title = new_title.clone();
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if had_change {
+            // Sync any new key into the registry so a brand-new
+            // name picks up a wheel colour; existing names stay
+            // untouched (allow, not force).
+            self.project.sync_legend_from_data();
+            self.status_line = format!("renamed c{} of #{} → {}", e.col, e.sheet.0, new_title);
+        }
     }
 
     fn render_cell(&mut self, ui: &mut Ui, sheet: SheetId, col: usize, row: usize) {
