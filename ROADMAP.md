@@ -43,6 +43,14 @@ for everything after.
       certified to 15 digits, passing at 1e-13)
 
 ### M2 — Data tables
+- [x] M2.1 — XY table (`graphcraft_table::XyTable`, `YFormat`
+      {SingleY, Replicates, MeanSd, MeanSem}, structural validation,
+      JSON round-trip)
+- [ ] M2.2 — Column table proper (subcolumn-per-group widening)
+- [ ] M2.3 — Grouped
+- [ ] M2.4 — Contingency
+- [ ] M2.5 — Survival
+- [ ] M2.6 — Parts-of-whole / Multiple-variables / Nested
 ### M3 — Descriptive + t-tests + 1-way ANOVA + non-parametric
 ### M4 — Linear + nonlinear regression (LM + published model library)
 ### M5 — Core graphs (XY, Column, Grouped, Survival) + SVG/PDF export

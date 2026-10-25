@@ -11,5 +11,8 @@ description = "L2: typed Prism-style data tables (XY, Column, Grouped, ...)."
 [dependencies]
 serde = { workspace = true }
 
+[dev-dependencies]
+serde_json = { workspace = true }
+
 [lints]
 workspace = true
