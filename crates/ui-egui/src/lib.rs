@@ -259,21 +259,24 @@ impl AppState {
                 }
             };
             #[cfg(target_arch = "wasm32")]
-            let bytes: Vec<u8> = {
-                // Async reads on the web land in M9.8 with the
-                // eframe-web runner; skip for now.
+            {
+                // Browser drops need an async read; a dedicated
+                // bridge lands in a follow-up slice.
                 let _ = f;
-                self.status_line = format!("drop of {name}: async reads come in M9.8");
+                self.status_line = format!("drop of {name}: async web drops come in a follow-up");
                 continue;
-            };
-            let lower = name.to_lowercase();
-            if lower.ends_with(".graphcraft") || lower.ends_with(".json") {
-                self.try_load_bytes(&bytes, &name);
-            } else if lower.ends_with(".csv") || !lower.contains('.') {
-                let title = name.trim_end_matches(".csv").to_string();
-                self.import_csv_into_project(&bytes, &title);
-            } else {
-                self.status_line = format!("ignored {name}: unknown extension");
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let lower = name.to_lowercase();
+                if lower.ends_with(".graphcraft") || lower.ends_with(".json") {
+                    self.try_load_bytes(&bytes, &name);
+                } else if lower.ends_with(".csv") || !lower.contains('.') {
+                    let title = name.trim_end_matches(".csv").to_string();
+                    self.import_csv_into_project(&bytes, &title);
+                } else {
+                    self.status_line = format!("ignored {name}: unknown extension");
+                }
             }
         }
     }

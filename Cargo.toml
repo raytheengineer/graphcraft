@@ -11,11 +11,11 @@ members = [
     "crates/format",
     "crates/engine",
     "crates/ui-egui",
-    "crates/web",
     "apps/graphcraft",
     "apps/graphcraft-bench",
     "apps/graphcraft-cli",
     "apps/graphcraft-mcp",
+    "apps/graphcraft-web",
     "xtask",
 ]
 default-members = [

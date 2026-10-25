@@ -101,12 +101,12 @@ fn layers() -> Result<()> {
         ("graphcraft_format", 4),
         ("graphcraft_render", 4),
         ("graphcraft_engine", 5),
-        ("graphcraft_web", 5),
         ("graphcraft_ui_egui", 6),
         ("graphcraft", 6),
         ("graphcraft-cli", 6),
         ("graphcraft-bench", 6),
         ("graphcraft-mcp", 6),
+        ("graphcraft-web", 6),
     ]
     .into_iter()
     .collect();

@@ -1,0 +1,32 @@
+[package]
+name = "graphcraft-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "GraphCraft in the browser (eframe-web runner using the shared ui-egui crate)."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+graphcraft_format = { path = "../../crates/format" }
+graphcraft_ui_egui = { path = "../../crates/ui-egui" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# wgpu gets WebGPU where available with the WebGL2 fallback.
+eframe = { workspace = true, features = ["default_fonts", "wgpu"] }
+egui = { workspace = true }
+log = "0.4"
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement",
+    "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url",
+] }
+
+[lints]
+workspace = true
