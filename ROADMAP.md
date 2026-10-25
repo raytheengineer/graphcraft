@@ -1,9 +1,9 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M3 + M4 complete, M5.1 shipped.**
-Statistics, regression (OLS + LM + model library), and the first
-scene builder + SVG renderer. The visual half of the project begins.
-46 numeric parity rows live; graphs tested by structural invariants.
+Status headline (2026-10-25): **M3, M4, M5 complete.** Statistics
+and regression through M4; XY/Column/Grouped/Survival scene builders
+with SVG and hand-written PDF export at L5. 46 numeric parity rows;
+graphs tested by structural invariants.
 
 ## Honest assessment (2026-10-25)
 
@@ -137,7 +137,13 @@ for everything after.
       (`survival_scene` with Kaplan–Meier via `km_estimate` and
       censor-tick overlays). Scene gets `Bars`, `GroupedBars`,
       `CensorTicks` series variants; renderer draws them.
-- [ ] M5.3 — PDF export
+- [x] M5.3 — PDF export. Hand-written PDF 1.4 writer at L5
+      (`render_pdf -> Vec<u8>`), no third-party PDF crate. Uses
+      the built-in Helvetica font (no embedding), four-Bezier
+      circle approximation for scatter markers, string escaping
+      for `( ) \`. Supports every scene variant the SVG renderer
+      does. Structural tests: header, `xref` + `trailer` + `%%EOF`,
+      parentheses escape. M5 complete.
 ### M6 — Remaining analyses + graph types
 ### M7 — Polish, perf budgets, MCP, web build
 

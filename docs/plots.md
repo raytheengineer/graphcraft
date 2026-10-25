@@ -92,11 +92,36 @@ step. Y-axis is pinned to `[0, 1]` with ticks at
 Reference (behaviour): Kaplan, E. L. & Meier, P. (1958) *JASA*
 53, 457–481. Classical algorithm.
 
+## PDF export (M5.3)
+
+`graphcraft_render::render_pdf(&Scene) -> Vec<u8>` writes a PDF 1.4
+single-page document from scratch — no third-party PDF crate.
+
+The page uses one built-in font (Helvetica, one of the 14
+"standard 14" fonts every PDF viewer carries by spec), so there is
+nothing to embed. The same scene variants the SVG renderer draws
+are supported in PDF: scatter markers (circles, squares, triangles
+— circles via four cubic-Bezier arcs with κ = 0.5522847), lines,
+bars, grouped bars, censor ticks, legend, axis titles, tick labels.
+
+The PDF coordinate system has its origin at the bottom-left with
+y increasing upward; the renderer flips y during projection so the
+scene's data-space y still runs upward on the page.
+
+Only ASCII characters appear in the generated text; higher
+code-points are replaced with `?` for WinAnsiEncoding safety.
+Characters `( )` and `\` in strings are escaped as `\( \) \\`.
+
+Reference (behaviour): Adobe Systems (2006), *PDF Reference, sixth
+edition, version 1.7*, §3 and §8. Classical page-description
+model.
+
 ## Deferred
-- PDF export (M5.3).
 - Multi-dataset XY overlays, mean±SD error bars, fit-line
   overlays.
 - Log-scale axes.
 - Visual-regression parity. Current parity is structural: tests
-  assert the SVG contains the expected tick labels, axis titles,
-  and series elements.
+  assert the SVG / PDF contains the expected tick labels, axis
+  titles, series elements, header, trailer, `%%EOF`, and that
+  string escaping is correct.
+- Non-ASCII text (would need an embedded TrueType font subset).
