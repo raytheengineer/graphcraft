@@ -1,9 +1,9 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M3–M5 complete, M6.1 + M6.2 shipped.**
+Status headline (2026-10-25): **M3–M5 complete, M6.1–M6.3 shipped.**
 Statistics, regression, four graph types with SVG+PDF export,
-correlation, contingency, ROC, and Bland-Altman. 59 numeric parity
-rows; graphs tested by structural invariants.
+correlation, contingency, ROC, Bland-Altman, and two-way ANOVA.
+66 numeric parity rows; graphs tested by structural invariants.
 
 ## Honest assessment (2026-10-25)
 
@@ -157,7 +157,11 @@ for everything after.
       agreement (bias, SD of differences, limits of agreement, CI
       on bias, (mean, diff) points). Five new closed-form parity
       rows.
-- [ ] M6.3 — 2-way ANOVA
+- [x] M6.3 — Two-way (balanced) fixed-effects ANOVA with the full
+      table (SS_A, SS_B, SS_AB, SS_within; df; MS; F; p for each
+      effect). Seven new closed-form parity rows on a 2×2
+      factorial with n=2 per cell. Unbalanced Type-III SS and
+      RM-ANOVA tracked as follow-ups.
 - [ ] M6.4 — Survival statistics (log-rank, hazard ratio)
 - [ ] M6.5 — Heatmap graph type + Shapiro-Wilk normality
 ### M7 — Polish, perf budgets, MCP, web build
@@ -194,6 +198,7 @@ published reference values, not against Prism.
 | fisher-exact | Fisher 1922 lady-tasting-tea `p = 2/70`; OR = 9 | passing | 1e-13 |
 | roc | AUC = 1 / 0 / 0.5 on perfect / inverted / hand-counted case | passing | 1e-14 |
 | bland-altman | Closed-form bias = 1.2, SD = √0.7 | passing | 1e-13 |
+| two-way-anova | 2×2 factorial, n=2: `SS_A=18, SS_B=72, SS_AB=8, SS_w=8`; `F=9,36,4` | passing | 1e-13 |
 
 ## Known numerical gaps
 _(none logged yet)_

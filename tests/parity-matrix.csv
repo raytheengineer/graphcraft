@@ -63,3 +63,10 @@ roc,roc:0.9/0|0.8/0|0.1/1|0.2/1,auc,0.0,1e-14,closed-form:complete-inversion
 roc,roc:0.8/1|0.6/1|0.9/0|0.7/0|0.5/0,auc,0.5,1e-14,closed-form:U_normalised
 bland-altman,inline2:1;2;3;4;5|1;3;4;6;7,bias,1.2,1e-13,closed-form:mean(y-x)
 bland-altman,inline2:1;2;3;4;5|1;3;4;6;7,sd_diff,0.8366600265340756,1e-13,closed-form:sqrt(0.7)
+two-way-anova,cells2x2:1;3/5;7//2;4/10;12,ss_a,18.0,1e-13,closed-form:n*J*sum
+two-way-anova,cells2x2:1;3/5;7//2;4/10;12,ss_b,72.0,1e-13,closed-form:n*I*sum
+two-way-anova,cells2x2:1;3/5;7//2;4/10;12,ss_ab,8.0,1e-13,closed-form:n*sum-residual
+two-way-anova,cells2x2:1;3/5;7//2;4/10;12,ss_within,8.0,1e-13,closed-form:within-cell-SS
+two-way-anova,cells2x2:1;3/5;7//2;4/10;12,f_a,9.0,1e-13,closed-form:MS_A/MS_within
+two-way-anova,cells2x2:1;3/5;7//2;4/10;12,f_b,36.0,1e-13,closed-form:MS_B/MS_within
+two-way-anova,cells2x2:1;3/5;7//2;4/10;12,f_ab,4.0,1e-13,closed-form:MS_AB/MS_within

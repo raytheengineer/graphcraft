@@ -49,6 +49,7 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | Fisher's exact (2×2)          | `fisher_exact_2x2`   | `table_fisher_exact`   | Fisher 1922 lady-tasting-tea (p = 2/70) |
 | ROC analysis                  | `roc`                | — | Hand-counted small case; perfect-sep AUC |
 | Bland-Altman agreement        | `bland_altman`       | — | Closed-form bias and SD |
+| Two-way ANOVA (balanced)      | `two_way_anova`      | — | Hand-computed 2×2 factorial |
 
 ## Descriptive statistics (M3.0)
 
@@ -626,3 +627,44 @@ Deferred to M6.2+:
 - Paired-ROC comparison (DeLong 1988).
 - Prism's Bland-Altman plot overlay (uses the scene builder,
   shipping with the heatmap in M6.5).
+
+## Two-way ANOVA (M6.3)
+
+`graphcraft_stats::anova2::two_way_anova(cells)` fits a balanced
+two-way fixed-effects ANOVA. `cells[i][j][k]` is the value for
+level `i` of factor A, level `j` of factor B, replicate `k`; every
+cell must have the same `n` replicates.
+
+Model: `y_ijk = μ + α_i + β_j + (αβ)_ij + ε_ijk`.
+
+Returned `TwoWayAnova`:
+- `row_a`, `col_b`, `interaction`, `within`: `AnovaEffect {
+  ss, df, ms, f, p }` for each row of the ANOVA table.
+- `ss_total`, `df_total`, `grand_mean`, cell / factor dimensions.
+
+The sums of squares use the textbook decomposition:
+- `SS_A = n·J·Σ (ȳ_i.. − ȳ)²`,
+- `SS_B = n·I·Σ (ȳ_.j. − ȳ)²`,
+- `SS_AB = n·Σ (ȳ_ij. − ȳ_i.. − ȳ_.j. + ȳ)²`,
+- `SS_within = Σ (y_ijk − ȳ_ij.)²`.
+
+Each F is `MS_effect / MS_within` on its own df; the right-tailed
+F p-value uses `f_sf` from the M3.3a backbone.
+
+Unbalanced designs (different n per cell) need Type I/II/III
+sums-of-squares and are tracked as follow-ups.
+
+Behaviour reference (public):
+- Scheffé, H. (1959) *The Analysis of Variance*, Wiley, Ch. 4.
+
+Parity rows (new, 7 total): closed form on a 2×2 factorial with
+n=2 per cell:
+- cells `{(1,3), (5,7), (2,4), (10,12)}` give
+  `SS_A = 18, SS_B = 72, SS_AB = 8, SS_within = 8`,
+  `F_A = 9, F_B = 36, F_AB = 4`.
+- All passing at 1e-13.
+
+Deferred to M6.3+:
+- Unbalanced two-way with Type III SS.
+- Repeated-measures 2-way (within-subject factor).
+- Mixed-model and 3-way ANOVA.

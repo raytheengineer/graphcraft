@@ -181,6 +181,26 @@ fn fit_library(id: &str, xs: &[f64], ys: &[f64]) -> graphcraft_regression::LmFit
     .unwrap_or_else(|e| panic!("library fit {id} failed: {e:?}"))
 }
 
+fn load_two_way_cells(spec: &str) -> Vec<Vec<Vec<f64>>> {
+    // `cells2x2:a;b/c;d//e;f/g;h` — row separator `//`, cell
+    // separator `/`, replicate separator `;`.
+    let payload = spec
+        .strip_prefix("cells2x2:")
+        .unwrap_or_else(|| panic!("not a cells2x2 spec: {spec}"));
+    payload
+        .split("//")
+        .map(|row| {
+            row.split('/')
+                .map(|cell| {
+                    cell.split(';')
+                        .map(|t| t.parse::<f64>().expect("cell value f64"))
+                        .collect()
+                })
+                .collect()
+        })
+        .collect()
+}
+
 fn load_roc(spec: &str) -> Vec<(f64, bool)> {
     // `roc:score,label|score,label|...` — label is 0 or 1.
     let payload = spec
@@ -431,6 +451,20 @@ fn run(row: &Row) -> f64 {
             "p" => r.p,
             "df" => r.df,
             other => panic!("unknown kruskal-wallis statistic: {other:?}"),
+        };
+    }
+    if row.analysis == "two-way-anova" {
+        let cells = load_two_way_cells(&row.dataset);
+        let r = graphcraft_stats::two_way_anova(&cells).unwrap();
+        return match row.statistic.as_str() {
+            "ss_a" => r.row_a.ss,
+            "ss_b" => r.col_b.ss,
+            "ss_ab" => r.interaction.ss,
+            "ss_within" => r.within.ss,
+            "f_a" => r.row_a.f,
+            "f_b" => r.col_b.f,
+            "f_ab" => r.interaction.f,
+            other => panic!("unknown two-way-anova statistic: {other:?}"),
         };
     }
     if row.analysis == "roc" {
