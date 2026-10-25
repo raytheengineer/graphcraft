@@ -36,8 +36,7 @@ for everything after.
 - [x] xtask: fmt, clippy, test, layers, cleanroom, assets, wasm, ci
 - [x] `engine::guard` + one trivial command + command-registry test
 - [x] `tests/parity-matrix.csv` seed row + harness
-- [ ] WASM gate wired in CI (deferred — needs toolchain install; local
-      `cargo xtask wasm` is a no-op warning until then)
+- [x] WASM gate wired in GitHub Actions CI (`.github/workflows/ci.yml`)
 - [ ] First CSV importer
 
 ### M2 — Data tables
