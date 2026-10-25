@@ -105,6 +105,7 @@ fn layers() -> Result<()> {
         ("graphcraft", 6),
         ("graphcraft-cli", 6),
         ("graphcraft-bench", 6),
+        ("graphcraft-mcp", 6),
     ]
     .into_iter()
     .collect();

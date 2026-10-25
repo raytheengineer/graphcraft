@@ -1,0 +1,27 @@
+[package]
+name = "graphcraft-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "GraphCraft Model-Context-Protocol stdio server."
+
+[dependencies]
+graphcraft_analysis = { path = "../../crates/analysis" }
+graphcraft_format = { path = "../../crates/format" }
+graphcraft_plot = { path = "../../crates/plot" }
+graphcraft_regression = { path = "../../crates/regression" }
+graphcraft_render = { path = "../../crates/render" }
+graphcraft_stats = { path = "../../crates/stats" }
+graphcraft_table = { path = "../../crates/table" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "graphcraft-mcp"
+path = "src/main.rs"
+
+[lints]
+workspace = true

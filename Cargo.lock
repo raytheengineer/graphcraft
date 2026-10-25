@@ -45,6 +45,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphcraft-mcp"
+version = "0.0.1"
+dependencies = [
+ "graphcraft_analysis",
+ "graphcraft_format",
+ "graphcraft_plot",
+ "graphcraft_regression",
+ "graphcraft_render",
+ "graphcraft_stats",
+ "graphcraft_table",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "graphcraft_analysis"
 version = "0.0.1"
 dependencies = [

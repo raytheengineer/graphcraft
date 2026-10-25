@@ -193,7 +193,12 @@ for everything after.
       Chi-squared, one-site binding fit) and prints median wall-
       times. `cargo xtask perf` builds release and runs the bench.
       Advisory in CI; absolute budgets in `docs/perf.md`.
-- [ ] M7.3 — MCP (Model Context Protocol) stdio wiring
+- [x] M7.3 — `apps/graphcraft-mcp` MCP stdio server speaking
+      line-delimited JSON-RPC 2.0. Supports `initialize`,
+      `tools/list`, `tools/call`. Eight tools exposed: describe,
+      anova, ttest_unpaired, ttest_paired, correlate, regress,
+      chi2_independence, plot_xy_svg. No third-party MCP crate;
+      pure JSON-RPC on stdin/stdout. Smoke-tested end-to-end.
 - [ ] M7.4 — Web build (WASM engine in a real page)
 
 ## Parity table
