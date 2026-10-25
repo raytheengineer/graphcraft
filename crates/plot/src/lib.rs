@@ -9,12 +9,19 @@
 //! M5.1 ships the XY scatter builder. Column, Grouped, and Survival
 //! builders follow in M5.2.
 
+pub mod column;
+pub mod grouped;
 pub mod scene;
+pub mod survival;
 pub mod ticks;
 pub mod xy;
 
+pub use column::{column_scene, column_scene_from_bars, ColumnErrorBars, ColumnOptions};
+pub use grouped::{grouped_scene, GroupedErrorBars, GroupedOptions};
 pub use scene::{
-    Axis, AxisScale, Color, Legend, LegendPosition, LineStyle, Marker, MarkerStyle, Scene, Series,
+    Axis, AxisScale, Color, ColumnBar, GroupedBar, Legend, LegendPosition, LineStyle, Marker,
+    MarkerStyle, Scene, Series,
 };
+pub use survival::{km_estimate, survival_scene, SurvivalOptions};
 pub use ticks::{nice_linear, NiceAxis};
 pub use xy::{xy_scene, xy_scene_from_points, XyOptions};

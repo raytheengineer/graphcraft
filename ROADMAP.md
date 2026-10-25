@@ -132,7 +132,11 @@ for everything after.
       renderer at L5 (`render_svg`) emitting a standalone document
       with inline attributes only (passes the WASM gate). Structural
       tests verify ticks, titles, series elements, XML escaping.
-- [ ] M5.2 — Column / Grouped / Survival scene builders + overlays
+- [x] M5.2 — Column (`column_scene`, SD/SEM error bars), Grouped
+      (`grouped_scene`, subcolumn-per-series), and Survival
+      (`survival_scene` with Kaplan–Meier via `km_estimate` and
+      censor-tick overlays). Scene gets `Bars`, `GroupedBars`,
+      `CensorTicks` series variants; renderer draws them.
 - [ ] M5.3 — PDF export
 ### M6 — Remaining analyses + graph types
 ### M7 — Polish, perf budgets, MCP, web build

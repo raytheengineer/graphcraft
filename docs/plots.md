@@ -59,10 +59,44 @@ no external resources. XML special characters in titles and labels
 are escaped. The output passes the WASM gate — no file I/O below
 L5.
 
+## Column, Grouped, Survival builders (M5.2)
+
+The scene `Series` enum now carries four more variants:
+`Bars`, `GroupedBars`, `CensorTicks`, in addition to the M5.1
+`Scatter` and `Line`. The renderer draws all five.
+
+### Column — `column_scene(table, &ColumnOptions)`
+
+One rectangular bar per non-empty column of a `ColumnTable`, with
+height = sample mean, error bar = SD (default) or SEM. Column
+titles label a categorical x-axis at integer positions
+`1..=k`. Bars with `n < 2` are drawn with zero error.
+
+### Grouped — `grouped_scene(table, &GroupedOptions)`
+
+A grouped bar chart from a `GroupedTable`. Each subcolumn across
+all groups becomes one `Series::GroupedBars`, so a 3-group /
+2-subcolumn table produces 2 series with 3 bars each. Subcolumn
+label becomes the legend entry; colour cycles through the public
+colour wheel.
+
+### Survival — `survival_scene(table, &SurvivalOptions)`
+
+Kaplan–Meier curves (one `Series::Line` per group), with censored
+observations rendered as separate `Series::CensorTicks`. The KM
+estimator is in `km_estimate`: inputs are sorted by time, events
+drive the step down, censored rows reduce `at_risk` but do not
+step. Y-axis is pinned to `[0, 1]` with ticks at
+`{0, 0.25, 0.5, 0.75, 1}`.
+
+Reference (behaviour): Kaplan, E. L. & Meier, P. (1958) *JASA*
+53, 457–481. Classical algorithm.
+
 ## Deferred
-- Multi-dataset scatter overlays, error bars (M5.2).
-- Column, Grouped, Survival builders (M5.2).
 - PDF export (M5.3).
+- Multi-dataset XY overlays, mean±SD error bars, fit-line
+  overlays.
+- Log-scale axes.
 - Visual-regression parity. Current parity is structural: tests
   assert the SVG contains the expected tick labels, axis titles,
   and series elements.

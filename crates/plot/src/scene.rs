@@ -107,6 +107,24 @@ pub struct LineStyle {
     pub width_pt: f64,
 }
 
+/// One pre-computed bar: category label + mean (height) + error.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ColumnBar {
+    pub label: String,
+    pub mean: f64,
+    pub error: f64,
+}
+
+/// One pre-computed grouped-bar entry: which group it belongs to
+/// (0-based integer index into the grouped x-axis categories) and
+/// its mean/error.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GroupedBar {
+    pub group_index: usize,
+    pub mean: f64,
+    pub error: f64,
+}
+
 /// One data series to draw.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -123,12 +141,41 @@ pub enum Series {
         points: Vec<(f64, f64)>,
         style: LineStyle,
     },
+    /// One rectangular bar per `ColumnBar`, placed at integer x
+    /// positions `1..=bars.len()` on a categorical axis.
+    Bars {
+        label: String,
+        bars: Vec<ColumnBar>,
+        marker: MarkerStyle,
+    },
+    /// A single "subcolumn" of a grouped bar chart. The grouped
+    /// axis has `n_groups` categories; this series sits in one
+    /// subcolumn slot `subcolumn` out of `subcolumns_per_group`.
+    GroupedBars {
+        label: String,
+        subcolumn: usize,
+        subcolumns_per_group: usize,
+        n_groups: usize,
+        bars: Vec<GroupedBar>,
+        marker: MarkerStyle,
+    },
+    /// Censor-tick marks: tiny vertical ticks drawn at data-space
+    /// `(x, y)`. Used by the Kaplan–Meier builder.
+    CensorTicks {
+        label: String,
+        points: Vec<(f64, f64)>,
+        style: LineStyle,
+    },
 }
 
 impl Series {
     pub fn label(&self) -> &str {
         match self {
-            Series::Scatter { label, .. } | Series::Line { label, .. } => label,
+            Series::Scatter { label, .. }
+            | Series::Line { label, .. }
+            | Series::Bars { label, .. }
+            | Series::GroupedBars { label, .. }
+            | Series::CensorTicks { label, .. } => label,
         }
     }
 }

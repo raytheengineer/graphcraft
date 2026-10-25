@@ -157,6 +157,93 @@ pub fn render_svg(scene: &Scene) -> String {
                     );
                 }
             }
+            Series::Bars { bars, marker, .. } => {
+                let bar_half = 0.3; // data-space half-width per bar
+                for (i, b) in bars.iter().enumerate() {
+                    let x_center = i as f64 + 1.0;
+                    let (x0, y_top) = to_px(x_center - bar_half, b.mean);
+                    let (x1, y_base) = to_px(x_center + bar_half, 0.0);
+                    let (x, y, w, h) = rect_from_corners(x0, y_top, x1, y_base);
+                    let _ = writeln!(
+                        out,
+                        r#"<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{f}" stroke="{s}" stroke-width="{sw}"/>"#,
+                        x = fmt_f(x),
+                        y = fmt_f(y),
+                        w = fmt_f(w),
+                        h = fmt_f(h),
+                        f = fmt_color(marker.fill),
+                        s = fmt_color(marker.stroke),
+                        sw = fmt_f(marker.stroke_width_pt),
+                    );
+                    if b.error > 0.0 {
+                        let (xm, _) = to_px(x_center, 0.0);
+                        let (_, y_up) = to_px(x_center, b.mean + b.error);
+                        let (_, y_dn) = to_px(x_center, b.mean - b.error);
+                        render_error_bar(&mut out, xm, y_up, y_dn, marker.stroke);
+                    }
+                    // Category label under the x-axis tick.
+                    let label_x = (x0 + x1) * 0.5;
+                    let _ = writeln!(
+                        out,
+                        r#"<text x="{x}" y="{y}" text-anchor="middle" font-family="sans-serif" font-size="10" fill="black">{t}</text>"#,
+                        x = fmt_f(label_x),
+                        y = fmt_f(py + ph + 16.0),
+                        t = escape_xml(&b.label),
+                    );
+                }
+            }
+            Series::GroupedBars {
+                bars,
+                subcolumn,
+                subcolumns_per_group,
+                n_groups,
+                marker,
+                ..
+            } => {
+                let total_slot = 0.8_f64; // of a unit of x-space
+                let slot = total_slot / *subcolumns_per_group as f64;
+                let bar_half = slot * 0.4;
+                let left_edge = -total_slot * 0.5 + slot * *subcolumn as f64;
+                let center_within_group = left_edge + slot * 0.5;
+                let _ = n_groups;
+                for b in bars {
+                    let xc = (b.group_index as f64 + 1.0) + center_within_group;
+                    let (x0, y_top) = to_px(xc - bar_half, b.mean);
+                    let (x1, y_base) = to_px(xc + bar_half, 0.0);
+                    let (x, y, w, h) = rect_from_corners(x0, y_top, x1, y_base);
+                    let _ = writeln!(
+                        out,
+                        r#"<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{f}" stroke="{s}" stroke-width="{sw}"/>"#,
+                        x = fmt_f(x),
+                        y = fmt_f(y),
+                        w = fmt_f(w),
+                        h = fmt_f(h),
+                        f = fmt_color(marker.fill),
+                        s = fmt_color(marker.stroke),
+                        sw = fmt_f(marker.stroke_width_pt),
+                    );
+                    if b.error > 0.0 {
+                        let (xm, _) = to_px(xc, 0.0);
+                        let (_, y_up) = to_px(xc, b.mean + b.error);
+                        let (_, y_dn) = to_px(xc, b.mean - b.error);
+                        render_error_bar(&mut out, xm, y_up, y_dn, marker.stroke);
+                    }
+                }
+            }
+            Series::CensorTicks { points, style, .. } => {
+                for &(dx, dy) in points {
+                    let (xi, yi) = to_px(dx, dy);
+                    let _ = writeln!(
+                        out,
+                        r#"<line x1="{x}" y1="{y1}" x2="{x}" y2="{y2}" stroke="{c}" stroke-width="{w}"/>"#,
+                        x = fmt_f(xi),
+                        y1 = fmt_f(yi - 4.0),
+                        y2 = fmt_f(yi + 4.0),
+                        c = fmt_color(style.stroke),
+                        w = fmt_f(style.width_pt),
+                    );
+                }
+            }
         }
     }
 
@@ -238,8 +325,10 @@ fn render_legend(out: &mut String, scene: &Scene, legend: &Legend) {
     for (i, s) in entries.iter().enumerate() {
         let y = y0 + padding + line_height * (i as f64 + 0.5);
         let color = match s {
-            Series::Scatter { marker, .. } => marker.fill,
-            Series::Line { style, .. } => style.stroke,
+            Series::Scatter { marker, .. }
+            | Series::Bars { marker, .. }
+            | Series::GroupedBars { marker, .. } => marker.fill,
+            Series::Line { style, .. } | Series::CensorTicks { style, .. } => style.stroke,
         };
         let _ = writeln!(
             out,
@@ -257,6 +346,40 @@ fn render_legend(out: &mut String, scene: &Scene, legend: &Legend) {
             t = escape_xml(s.label()),
         );
     }
+}
+
+fn rect_from_corners(x0: f64, y0: f64, x1: f64, y1: f64) -> (f64, f64, f64, f64) {
+    let x = x0.min(x1);
+    let y = y0.min(y1);
+    let w = (x1 - x0).abs();
+    let h = (y1 - y0).abs();
+    (x, y, w, h)
+}
+
+fn render_error_bar(out: &mut String, x: f64, y_up: f64, y_dn: f64, color: Color) {
+    let c = fmt_color(color);
+    let _ = writeln!(
+        out,
+        r#"<line x1="{x}" y1="{y1}" x2="{x}" y2="{y2}" stroke="{c}" stroke-width="1"/>"#,
+        x = fmt_f(x),
+        y1 = fmt_f(y_up),
+        y2 = fmt_f(y_dn),
+    );
+    let cap = 3.0_f64;
+    let _ = writeln!(
+        out,
+        r#"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" stroke="{c}" stroke-width="1"/>"#,
+        x1 = fmt_f(x - cap),
+        x2 = fmt_f(x + cap),
+        y = fmt_f(y_up),
+    );
+    let _ = writeln!(
+        out,
+        r#"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" stroke="{c}" stroke-width="1"/>"#,
+        x1 = fmt_f(x - cap),
+        x2 = fmt_f(x + cap),
+        y = fmt_f(y_dn),
+    );
 }
 
 fn fmt_f(v: f64) -> String {
