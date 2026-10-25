@@ -7,10 +7,15 @@
 
 pub mod lm;
 pub mod matrix;
+pub mod models;
 pub mod ols;
 
 pub use lm::{levenberg_marquardt, LmFit, LmOptions};
 pub use matrix::{
     back_solve_transposed, cholesky, forward_solve, invert_spd, solve_spd, DenseMatrix,
+};
+pub use models::{
+    fit_model, ExpDecayOnePhase, ExpGrowth, HillBinding, Line, LogDoseResponse, NonlinearModel,
+    OneSiteBinding,
 };
 pub use ols::{ols_fit, simple_linear_regression, OlsFit};

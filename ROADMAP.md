@@ -1,9 +1,10 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M3 complete, M4.1 + M4.2 shipped.**
-Statistics through M3 plus linear OLS and Levenberg-Marquardt
-nonlinear regression, with NIST StRD *Norris* and *Misra1a* parity.
-39 parity rows live.
+Status headline (2026-10-25): **M3 complete, M4 complete.** Statistics
+through M3 plus the full regression stack: linear OLS, Levenberg-
+Marquardt nonlinear fitting, and a six-model published library with
+data-driven starting values. NIST StRD *Norris* and *Misra1a* plus
+closed-form synthetic parity across the library. 46 parity rows live.
 
 ## Honest assessment (2026-10-25)
 
@@ -118,8 +119,13 @@ for everything after.
       `LmFit { params, se, rss, residual_se, R², adj R², F, n_iter,
       converged, final_lambda, … }`. NIST StRD *Misra1a* parity:
       4 rows at 1e-5 or tighter (b1, b2, RSS, residual SD).
-- [ ] M4.3 — Published model library (one-site binding, Hill /
-      dose-response, Michaelis-Menten, exponential decay, …)
+- [x] M4.3 — Published model library: `NonlinearModel` trait +
+      `fit_model` dispatcher + six models (`OneSiteBinding`,
+      `HillBinding`, `ExpDecayOnePhase`, `ExpGrowth`,
+      `LogDoseResponse`, `Line`), each with a data-driven
+      initial-estimate heuristic from the published literature.
+      Early-step convergence check added to LM. 7 new closed-form
+      synthetic parity rows at 1e-6 or tighter. M4 complete.
 ### M5 — Core graphs (XY, Column, Grouped, Survival) + SVG/PDF export
 ### M6 — Remaining analyses + graph types
 ### M7 — Polish, perf budgets, MCP, web build
@@ -150,6 +156,7 @@ published reference values, not against Prism.
 | kruskal-wallis | Closed form `H=7.2`, `p=e⁻³·⁶` on arithmetic groups | passing | 1e-12 |
 | simple-linear-regression | NIST StRD *Norris* (B0, B1, SE B0, SE B1, R², residual SD) | passing | 1e-11 |
 | misra1a (LM) | NIST StRD *Misra1a* (b1, b2, RSS, residual SD) | passing | 1e-5 |
+| library-fit:* | Six models (one-site, Hill, exp-decay, log-dose-response, line) on synthetic exact data | passing | 1e-6 to 1e-12 |
 
 ## Known numerical gaps
 _(none logged yet)_

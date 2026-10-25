@@ -43,3 +43,10 @@ misra1a,nist-regr:tests/data/nist/Misra1a.dat,b1,238.94212918,1e-6,https://itl.n
 misra1a,nist-regr:tests/data/nist/Misra1a.dat,b2,5.5015643181e-4,1e-6,https://itl.nist.gov/div898/strd/nls/data/misra1a.shtml
 misra1a,nist-regr:tests/data/nist/Misra1a.dat,rss,0.12455138894,1e-5,https://itl.nist.gov/div898/strd/nls/data/misra1a.shtml
 misra1a,nist-regr:tests/data/nist/Misra1a.dat,residual_se,0.10187876330,1e-5,https://itl.nist.gov/div898/strd/nls/data/misra1a.shtml
+library-fit:one-site-binding,synthetic:Bmax=100;Kd=10;xs=1~24~24,Bmax,100.0,1e-6,closed-form:synthetic-exact
+library-fit:one-site-binding,synthetic:Bmax=100;Kd=10;xs=1~24~24,Kd,10.0,1e-6,closed-form:synthetic-exact
+library-fit:hill-binding,synthetic:Bmax=100;Kd=10;h=2;xs=1~30~15,h,2.0,1e-6,closed-form:synthetic-exact
+library-fit:exp-decay-one-phase,synthetic:Y0=100;Plateau=10;k=0.3;xs=0~7~15,Y0,100.0,1e-5,closed-form:synthetic-exact
+library-fit:exp-decay-one-phase,synthetic:Y0=100;Plateau=10;k=0.3;xs=0~7~15,k,0.3,1e-7,closed-form:synthetic-exact
+library-fit:log-dose-response,synthetic:Bottom=0;Top=100;logEC50=-6;HillSlope=1;xs=-9~-3~7,logEC50,-6.0,1e-6,closed-form:synthetic-exact
+library-fit:line,synthetic:Intercept=1;Slope=2;xs=1~5~5,Slope,2.0,1e-12,closed-form:synthetic-exact

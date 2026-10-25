@@ -144,6 +144,15 @@ where
             }
         };
 
+        // Early convergence: if the proposed step is already within
+        // ptol of each component, we've found the fit. Checking
+        // this *before* evaluating the trial avoids pathological
+        // λ growth when float-noise rejections stall the solver.
+        if (0..p).all(|j| delta[j].abs() <= opts.ptol * (beta[j].abs() + opts.ptol)) {
+            converged = true;
+            break;
+        }
+
         let mut trial = vec![0.0_f64; p];
         for i in 0..p {
             trial[i] = beta[i] + delta[i];

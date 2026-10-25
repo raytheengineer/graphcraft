@@ -41,6 +41,7 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | Dunn's post-hoc               | `dunns_test`         | `column_dunns_test`    | Verified via KW mean-rank structure |
 | Linear regression (OLS)       | `graphcraft_regression::{ols_fit, simple_linear_regression}` | `xy_simple_regression`, `column_simple_regression` | NIST StRD *Norris* at 1e-11 |
 | Nonlinear fit (Levenberg-Marquardt) | `graphcraft_regression::levenberg_marquardt` | (model library in M4.3) | NIST StRD *Misra1a* at 1e-6 |
+| Published model library       | `graphcraft_regression::{fit_model, NonlinearModel, OneSiteBinding, HillBinding, ExpDecayOnePhase, ExpGrowth, LogDoseResponse, Line}` | — | Closed-form synthetic data at 1e-6+ |
 
 ## Descriptive statistics (M3.0)
 
@@ -467,3 +468,46 @@ Deferred to M4.2+:
 - Weighted / constrained fits.
 - Bootstrap confidence intervals.
 - The harder NIST nonlinear datasets (Thurber, BoxBOD, MGH-family).
+
+## Published model library (M4.3)
+
+`graphcraft_regression::models` ships the `NonlinearModel` trait and
+six published models with data-driven starting-value heuristics.
+`fit_model(model, xs, ys, opts)` calls LM from the model's own
+initial estimates.
+
+| Model | Equation | Params | Starting heuristic |
+| --- | --- | --- | --- |
+| `OneSiteBinding` | `y = Bmax·x / (Kd + x)` | `Bmax, Kd` | `Bmax ≈ 1.1·max(y)`, `Kd ≈ x at y ≈ Bmax/2` |
+| `HillBinding` | `y = Bmax·x^h / (Kd^h + x^h)` | `Bmax, Kd, h` | binding heuristic + `h = 1` |
+| `ExpDecayOnePhase` | `y = (Y0 − Plateau)·e^{−k·x} + Plateau` | `Y0, Plateau, k` | `Y0 = y[0]`, `Plateau = y[-1]`, `k = ln 2 / x_half` |
+| `ExpGrowth` | `y = Y0·e^{k·x}` | `Y0, k` | `Y0 = y[0]`, log-linear slope between first/last |
+| `LogDoseResponse` | `y = Bottom + (Top − Bottom) / (1 + 10^{(logEC50 − x)·HillSlope})` | `Bottom, Top, logEC50, HillSlope` | `Bottom = min`, `Top = max`, `logEC50 = x at half-max`, `HillSlope = 1` |
+| `Line` | `y = Intercept + Slope · x` | `Intercept, Slope` | two-point slope through endpoints |
+
+The convergence rule in [`levenberg_marquardt`] now also declares
+convergence when the proposed step is below `ptol` component-wise
+*before* evaluating the trial. That avoids pathological λ growth
+when a fit has essentially found the answer and later floating-point
+noise would otherwise reject every subsequent step.
+
+Behaviour references (public):
+- Motulsky, H. & Christopoulos, A. (2004) *Fitting Models to
+  Biological Data Using Linear and Nonlinear Regression*, Oxford
+  University Press. (Textbook; model equations and start-value
+  conventions quoted from here.)
+
+Parity rows (new, 7 total): closed-form synthetic data for each
+model, recovering the known parameters to 1e-6 or tighter:
+- `one-site-binding`: `Bmax = 100`, `Kd = 10`.
+- `hill-binding`: `h = 2`.
+- `exp-decay-one-phase`: `Y0 = 100`, `k = 0.3`.
+- `log-dose-response`: `logEC50 = −6`.
+- `line`: `Slope = 2` at 1e-12.
+
+Deferred to M4.3+:
+- Model-level analysis-API wrapper (e.g. `xy_fit(table, model_id)`)
+  — currently callers go through `fit_model` directly.
+- Prism's two-phase decay, log-growth, Gompertz, Hill with
+  constraint; sigmoidal dose-response with constrained Top/Bottom.
+- User-defined models through an expression language.

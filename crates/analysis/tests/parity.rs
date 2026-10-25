@@ -95,6 +95,92 @@ fn load_dataset(spec: &str) -> Vec<f64> {
     panic!("unsupported dataset spec: {spec}");
 }
 
+fn load_synthetic(spec: &str) -> (Vec<f64>, Vec<f64>, std::collections::BTreeMap<String, f64>) {
+    // `synthetic:p1=v1;p2=v2;xs=lo~hi~n` — build xs linearly from
+    // lo to hi with n points, compute ys exactly from the model.
+    let payload = spec
+        .strip_prefix("synthetic:")
+        .unwrap_or_else(|| panic!("not a synthetic spec: {spec}"));
+    let mut params = std::collections::BTreeMap::new();
+    let mut xs_spec: Option<String> = None;
+    for pair in payload.split(';') {
+        if let Some((k, v)) = pair.split_once('=') {
+            if k == "xs" {
+                xs_spec = Some(v.to_string());
+                continue;
+            }
+            let v: f64 = v
+                .parse()
+                .unwrap_or_else(|_| panic!("synthetic param {k} is not f64: {v:?}"));
+            params.insert(k.to_string(), v);
+        }
+    }
+    let xs_text = xs_spec.unwrap_or_else(|| panic!("synthetic spec needs xs=lo~hi~n: {spec}"));
+    let parts: Vec<&str> = xs_text.split('~').collect();
+    assert_eq!(parts.len(), 3, "xs spec is lo~hi~n: {xs_text}");
+    let lo: f64 = parts[0].parse().unwrap();
+    let hi: f64 = parts[1].parse().unwrap();
+    let n: usize = parts[2].parse().unwrap();
+    assert!(n >= 2, "xs n must be >= 2");
+    let step = (hi - lo) / (n as f64 - 1.0);
+    let xs: Vec<f64> = (0..n).map(|i| lo + i as f64 * step).collect();
+    // ys is caller-filled; set to zero here, the model dispatcher
+    // computes exact values from params.
+    let ys = vec![0.0_f64; n];
+    (xs, ys, params)
+}
+
+fn library_param_names(id: &str) -> &'static [&'static str] {
+    use graphcraft_regression::NonlinearModel;
+    match id {
+        "one-site-binding" => graphcraft_regression::OneSiteBinding.param_names(),
+        "hill-binding" => graphcraft_regression::HillBinding.param_names(),
+        "exp-decay-one-phase" => graphcraft_regression::ExpDecayOnePhase.param_names(),
+        "exp-growth" => graphcraft_regression::ExpGrowth.param_names(),
+        "log-dose-response" => graphcraft_regression::LogDoseResponse.param_names(),
+        "line" => graphcraft_regression::Line.param_names(),
+        other => panic!("unknown library model id: {other}"),
+    }
+}
+
+fn library_predict(id: &str, params: &[f64], x: f64) -> f64 {
+    use graphcraft_regression::NonlinearModel;
+    match id {
+        "one-site-binding" => graphcraft_regression::OneSiteBinding.predict(params, x),
+        "hill-binding" => graphcraft_regression::HillBinding.predict(params, x),
+        "exp-decay-one-phase" => graphcraft_regression::ExpDecayOnePhase.predict(params, x),
+        "exp-growth" => graphcraft_regression::ExpGrowth.predict(params, x),
+        "log-dose-response" => graphcraft_regression::LogDoseResponse.predict(params, x),
+        "line" => graphcraft_regression::Line.predict(params, x),
+        other => panic!("unknown library model id: {other}"),
+    }
+}
+
+fn fit_library(id: &str, xs: &[f64], ys: &[f64]) -> graphcraft_regression::LmFit {
+    use graphcraft_regression::{fit_model, LmOptions};
+    // Library parity rows are closed-form synthetic data; RSS at
+    // the solution is essentially zero. The default LM tolerances
+    // (ftol=1e-12 relative) become `≤ 1e-24` as `S → 0`, so loosen
+    // the stopping rule to a modest absolute floor that still
+    // guarantees the published 1e-6-ish parity.
+    let opts = LmOptions {
+        max_iter: 2000,
+        ftol: 1e-20,
+        ptol: 1e-14,
+        ..LmOptions::default()
+    };
+    match id {
+        "one-site-binding" => fit_model(&graphcraft_regression::OneSiteBinding, xs, ys, opts),
+        "hill-binding" => fit_model(&graphcraft_regression::HillBinding, xs, ys, opts),
+        "exp-decay-one-phase" => fit_model(&graphcraft_regression::ExpDecayOnePhase, xs, ys, opts),
+        "exp-growth" => fit_model(&graphcraft_regression::ExpGrowth, xs, ys, opts),
+        "log-dose-response" => fit_model(&graphcraft_regression::LogDoseResponse, xs, ys, opts),
+        "line" => fit_model(&graphcraft_regression::Line, xs, ys, opts),
+        other => panic!("unknown library model id: {other}"),
+    }
+    .unwrap_or_else(|e| panic!("library fit {id} failed: {e:?}"))
+}
+
 fn load_regression_pair(spec: &str) -> (Vec<f64>, Vec<f64>) {
     // NIST StRD regression (y, x) pairs:  nist-regr:tests/data/nist/Norris.dat
     //
@@ -202,6 +288,32 @@ fn run(row: &Row) -> f64 {
             "p" => r.p_two_sided,
             other => panic!("unknown two-sample statistic: {other:?}"),
         };
+    }
+    if let Some(model_id) = row.analysis.strip_prefix("library-fit:") {
+        let (xs, _placeholder, params_map) = load_synthetic(&row.dataset);
+        let names = library_param_names(model_id);
+        let true_params: Vec<f64> = names
+            .iter()
+            .map(|n| {
+                *params_map
+                    .get(*n)
+                    .unwrap_or_else(|| panic!("missing synthetic param {n} for {model_id}"))
+            })
+            .collect();
+        let ys: Vec<f64> = xs
+            .iter()
+            .map(|&x| library_predict(model_id, &true_params, x))
+            .collect();
+        let fit = fit_library(model_id, &xs, &ys);
+        // Formal `converged` can be false even when the parameters
+        // are within double precision of truth (RSS → 0 defeats
+        // the relative-ΔS stopping rule). The row-level tolerance
+        // check is the real parity oracle.
+        let idx = names
+            .iter()
+            .position(|n| *n == row.statistic)
+            .unwrap_or_else(|| panic!("unknown param {:?} for {model_id}", row.statistic));
+        return fit.params[idx];
     }
     if row.analysis == "misra1a" {
         // NIST StRD nonlinear benchmark Misra1a:
