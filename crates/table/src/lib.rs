@@ -284,6 +284,172 @@ impl XyTable {
     }
 }
 
+// -------- Grouped tables ---------------------------------------------
+//
+// Prism's Grouped layout: rows × side-by-side groups × replicates
+// within each group. One row corresponds to one condition (e.g.
+// "Day 1"), one group to one factor level (e.g. "Control"), and the
+// subcolumns within a group are the replicate observations at that
+// row for that group. Powers two-way and three-way ANOVA, and the
+// Grouped bar/scatter plots.
+//
+// Reference (public manual, "Grouped data tables"):
+//   https://www.graphpad.com/guides/prism/latest/user-guide/
+
+/// One group inside a [`GroupedTable`]: a header plus a vector of
+/// replicate subcolumns. All subcolumns of one group must have the
+/// same length — a missing observation at a row is encoded as
+/// `None` in that subcolumn, not as a shorter column.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GroupColumn {
+    pub title: String,
+    pub subcolumns: Vec<Column>,
+}
+
+impl GroupColumn {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            subcolumns: Vec::new(),
+        }
+    }
+
+    /// Replicate count for this group (number of subcolumns).
+    pub fn replicates(&self) -> usize {
+        self.subcolumns.len()
+    }
+
+    /// Row count — the common length of every subcolumn, or 0 if the
+    /// group has no subcolumns or they disagree.
+    pub fn rows(&self) -> usize {
+        let mut iter = self.subcolumns.iter();
+        let Some(first) = iter.next() else {
+            return 0;
+        };
+        let n = first.values.len();
+        for sub in iter {
+            if sub.values.len() != n {
+                return 0;
+            }
+        }
+        n
+    }
+}
+
+/// Reason a [`GroupedTable`] fails [`GroupedTable::validate`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GroupedError {
+    /// Subcolumns inside one group have different lengths.
+    RaggedGroup { group: usize },
+    /// `row_titles` is non-empty but doesn't match the row count.
+    RowTitlesMismatch { expected: usize, got: usize },
+}
+
+impl std::fmt::Display for GroupedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GroupedError::RaggedGroup { group } => {
+                write!(f, "group {group}: subcolumns have different lengths")
+            }
+            GroupedError::RowTitlesMismatch { expected, got } => write!(
+                f,
+                "row_titles has {got} entries but table has {expected} rows"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for GroupedError {}
+
+/// A Grouped data table: rows × side-by-side groups × replicates.
+///
+/// `height()` is the common row count across groups (groups that
+/// disagree with the shared row count are a validation error, not a
+/// silent extension). Different groups may hold different replicate
+/// counts; that is the whole point of the layout.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GroupedTable {
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub row_titles: Vec<String>,
+    pub groups: Vec<GroupColumn>,
+}
+
+impl GroupedTable {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            row_titles: Vec::new(),
+            groups: Vec::new(),
+        }
+    }
+
+    pub fn kind(&self) -> TableKind {
+        TableKind::Grouped
+    }
+
+    pub fn width(&self) -> usize {
+        self.groups.len()
+    }
+
+    /// Common row count across groups: the longest group's row count.
+    /// Empty if there are no groups.
+    pub fn height(&self) -> usize {
+        self.groups.iter().map(|g| g.rows()).max().unwrap_or(0)
+    }
+
+    /// Fetch one cell: `(row, group, replicate)`. `None` if any index
+    /// is out of range or the cell is missing.
+    pub fn cell(&self, row: usize, group: usize, replicate: usize) -> Option<f64> {
+        self.groups
+            .get(group)?
+            .subcolumns
+            .get(replicate)?
+            .values
+            .get(row)
+            .copied()
+            .flatten()
+    }
+
+    /// Iterate the non-missing replicates for one (row, group) cell.
+    pub fn replicates_at(&self, row: usize, group: usize) -> impl Iterator<Item = f64> + '_ {
+        self.groups
+            .get(group)
+            .into_iter()
+            .flat_map(move |g| g.subcolumns.iter())
+            .filter_map(move |sub| sub.values.get(row).copied().flatten())
+    }
+
+    /// Replicate count (non-missing) for one `(row, group)`.
+    pub fn replicate_n(&self, row: usize, group: usize) -> usize {
+        self.replicates_at(row, group).count()
+    }
+
+    /// Validate: each group is internally rectangular (all subcolumns
+    /// the same length) and `row_titles`, if non-empty, matches the
+    /// row count.
+    pub fn validate(&self) -> Result<(), GroupedError> {
+        for (i, g) in self.groups.iter().enumerate() {
+            if g.subcolumns.len() >= 2 {
+                let first = g.subcolumns[0].values.len();
+                for sub in &g.subcolumns[1..] {
+                    if sub.values.len() != first {
+                        return Err(GroupedError::RaggedGroup { group: i });
+                    }
+                }
+            }
+        }
+        let h = self.height();
+        if !self.row_titles.is_empty() && self.row_titles.len() != h {
+            return Err(GroupedError::RowTitlesMismatch {
+                expected: h,
+                got: self.row_titles.len(),
+            });
+        }
+        Ok(())
+    }
+}
+
 // -------- AnyTable (typed container) ---------------------------------
 //
 // Documents hold a heterogenous list of tables (an experiment may mix
@@ -299,6 +465,7 @@ impl XyTable {
 pub enum AnyTable {
     Column(ColumnTable),
     Xy(XyTable),
+    Grouped(GroupedTable),
 }
 
 impl AnyTable {
@@ -306,6 +473,7 @@ impl AnyTable {
         match self {
             AnyTable::Column(_) => TableKind::Column,
             AnyTable::Xy(_) => TableKind::Xy,
+            AnyTable::Grouped(_) => TableKind::Grouped,
         }
     }
 }
@@ -319,6 +487,12 @@ impl From<ColumnTable> for AnyTable {
 impl From<XyTable> for AnyTable {
     fn from(t: XyTable) -> Self {
         AnyTable::Xy(t)
+    }
+}
+
+impl From<GroupedTable> for AnyTable {
+    fn from(t: GroupedTable) -> Self {
+        AnyTable::Grouped(t)
     }
 }
 
@@ -550,5 +724,108 @@ mod tests {
         let t: AnyTable = ColumnTable::new("x").into();
         let json = serde_json::to_string(&t).unwrap();
         assert!(json.contains("\"kind\":\"column\""), "got {json}");
+    }
+
+    fn sample_grouped() -> GroupedTable {
+        // Two rows (Day 1 / Day 2), two groups (Ctrl / Drug), with
+        // different replicate counts per group (3 vs 2).
+        GroupedTable {
+            title: "proliferation".into(),
+            row_titles: vec!["Day 1".into(), "Day 2".into()],
+            groups: vec![
+                GroupColumn {
+                    title: "Ctrl".into(),
+                    subcolumns: vec![
+                        Column {
+                            title: "r1".into(),
+                            values: vec![Some(10.0), Some(14.0)],
+                        },
+                        Column {
+                            title: "r2".into(),
+                            values: vec![Some(11.0), Some(13.5)],
+                        },
+                        Column {
+                            title: "r3".into(),
+                            values: vec![Some(10.5), None],
+                        },
+                    ],
+                },
+                GroupColumn {
+                    title: "Drug".into(),
+                    subcolumns: vec![
+                        Column {
+                            title: "r1".into(),
+                            values: vec![Some(15.0), Some(22.0)],
+                        },
+                        Column {
+                            title: "r2".into(),
+                            values: vec![Some(14.5), Some(21.0)],
+                        },
+                    ],
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn grouped_shape() {
+        let t = sample_grouped();
+        assert_eq!(t.kind(), TableKind::Grouped);
+        assert_eq!(t.width(), 2);
+        assert_eq!(t.height(), 2);
+        t.validate().unwrap();
+    }
+
+    #[test]
+    fn grouped_cell_lookup() {
+        let t = sample_grouped();
+        assert_eq!(t.cell(0, 0, 0), Some(10.0));
+        assert_eq!(t.cell(1, 0, 2), None); // missing replicate
+        assert_eq!(t.cell(1, 1, 1), Some(21.0));
+        assert_eq!(t.cell(5, 0, 0), None); // row OOR
+        assert_eq!(t.cell(0, 9, 0), None); // group OOR
+        assert_eq!(t.cell(0, 0, 9), None); // replicate OOR
+    }
+
+    #[test]
+    fn grouped_replicates_at_skip_missing() {
+        let t = sample_grouped();
+        let reps_day2_ctrl: Vec<f64> = t.replicates_at(1, 0).collect();
+        assert_eq!(reps_day2_ctrl, vec![14.0, 13.5]); // r3 at row 1 is None
+        assert_eq!(t.replicate_n(1, 0), 2);
+        assert_eq!(t.replicate_n(0, 0), 3);
+        assert_eq!(t.replicate_n(0, 1), 2);
+    }
+
+    #[test]
+    fn grouped_ragged_within_group_rejected() {
+        let mut t = sample_grouped();
+        t.groups[0].subcolumns[0].values.push(Some(99.0));
+        assert!(matches!(
+            t.validate().unwrap_err(),
+            GroupedError::RaggedGroup { group: 0 }
+        ));
+    }
+
+    #[test]
+    fn grouped_row_titles_length_checked() {
+        let mut t = sample_grouped();
+        t.row_titles.push("Day 3".into());
+        assert!(matches!(
+            t.validate().unwrap_err(),
+            GroupedError::RowTitlesMismatch {
+                expected: 2,
+                got: 3
+            }
+        ));
+    }
+
+    #[test]
+    fn grouped_round_trip_as_any_table() {
+        let t: AnyTable = sample_grouped().into();
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(json.contains("\"kind\":\"grouped\""), "got {json}");
+        let back: AnyTable = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, back);
     }
 }

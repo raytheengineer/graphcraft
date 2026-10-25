@@ -50,7 +50,9 @@ for everything after.
       helpers, and a typed `AnyTable` container (`kind`-tagged serde
       enum) so `Document.tables` is `Vec<AnyTable>` instead of
       untyped JSON values.
-- [ ] M2.3 — Grouped
+- [x] M2.3 — Grouped (`GroupedTable`, `GroupColumn`, cell /
+      replicates-at / replicate_n helpers, rectangular-within-group
+      validation, `AnyTable::Grouped` round-trip)
 - [ ] M2.4 — Contingency
 - [ ] M2.5 — Survival
 - [ ] M2.6 — Parts-of-whole / Multiple-variables / Nested

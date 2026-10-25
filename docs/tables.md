@@ -15,7 +15,7 @@ by URL.
 | --------------------- | ----------- | ----------------------------- |
 | Column                | ✅ (M1.2, M2.2 row labels) | `ColumnTable`     |
 | XY                    | ✅ (M2.1)   | `XyTable`                     |
-| Grouped               | planned     | —                             |
+| Grouped               | ✅ (M2.3)   | `GroupedTable`                |
 | Contingency           | planned     | —                             |
 | Survival              | planned     | —                             |
 | Parts-of-whole        | planned     | —                             |
@@ -68,6 +68,25 @@ are skipped by analyses.
 The subcolumn-per-group concept belongs to Grouped tables (M2.3), not
 Column tables. One sample value per cell is correct for a Column
 table.
+
+## Grouped tables (`GroupedTable`)
+
+Rows × side-by-side groups × replicates within each group. One row
+is one condition (e.g. "Day 1"); one group is one factor level
+(e.g. "Control"); the subcolumns within a group are the replicate
+observations at that row for that group. Powers two-way and
+three-way ANOVA, and the Grouped bar/scatter plots.
+
+- Rectangular within each group — all subcolumns of one group must
+  have the same length. Missing observations are `None` cells, not
+  shorter subcolumns.
+- Different groups may hold different replicate counts — that's the
+  whole point of the layout.
+- Helpers: `cell(row, group, replicate)` (optional f64),
+  `replicates_at(row, group)` (iterator over non-missing f64),
+  `replicate_n(row, group)`.
+- Validation (`validate()`) rejects ragged groups and
+  `row_titles`-length mismatches.
 
 ## Typed container (`AnyTable`)
 
