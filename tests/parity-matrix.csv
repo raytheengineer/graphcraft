@@ -70,3 +70,7 @@ two-way-anova,cells2x2:1;3/5;7//2;4/10;12,ss_within,8.0,1e-13,closed-form:within
 two-way-anova,cells2x2:1;3/5;7//2;4/10;12,f_a,9.0,1e-13,closed-form:MS_A/MS_within
 two-way-anova,cells2x2:1;3/5;7//2;4/10;12,f_b,36.0,1e-13,closed-form:MS_B/MS_within
 two-way-anova,cells2x2:1;3/5;7//2;4/10;12,f_ab,4.0,1e-13,closed-form:MS_AB/MS_within
+log-rank,survival:1;1||2;2,chi2,3.0,1e-13,closed-form:1/(1/3)
+log-rank,survival:1;1||2;2,o_minus_e,1.0,1e-13,closed-form:2-1
+log-rank,survival:1;1||2;2,variance,0.3333333333333333,1e-13,closed-form:1/3
+log-rank,survival:1;2;3||1;2;3,chi2,0.0,1e-13,closed-form:identical-groups

@@ -14,6 +14,7 @@ pub mod nonpar;
 pub mod quadrature;
 pub mod roc;
 pub mod special;
+pub mod survival;
 pub mod ttest;
 pub use anova::{dunnett, one_way_anova, tukey_hsd, OneWayAnova, PairwiseComparison};
 pub use anova2::{two_way_anova, AnovaEffect, TwoWayAnova};
@@ -28,6 +29,7 @@ pub use nonpar::{
     MannWhitney, WilcoxonSignedRank,
 };
 pub use roc::{roc, RocAnalysis};
+pub use survival::{log_rank, LogRank};
 pub use ttest::{
     one_sample_t, paired_t, unpaired_t, OneSampleT, PairedT, TwoSampleKind, TwoSampleT,
 };

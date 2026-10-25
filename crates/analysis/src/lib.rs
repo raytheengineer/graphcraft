@@ -9,13 +9,13 @@
 use graphcraft_numeric::NumericError;
 use graphcraft_regression::{simple_linear_regression, OlsFit};
 use graphcraft_stats::{
-    chi_squared_independence, dunnett, dunns_test, fisher_exact_2x2, kruskal_wallis, mann_whitney,
-    one_sample_t, one_way_anova, paired_t, pearson, spearman, tukey_hsd, unpaired_t,
+    chi_squared_independence, dunnett, dunns_test, fisher_exact_2x2, kruskal_wallis, log_rank,
+    mann_whitney, one_sample_t, one_way_anova, paired_t, pearson, spearman, tukey_hsd, unpaired_t,
     wilcoxon_signed_rank, ChiSquaredTest, Correlation, Descriptives, DunnPair, DunnettSide,
-    FisherExact, KruskalWallis, MannWhitney, OneSampleT, OneWayAnova, PairedT, PairwiseComparison,
-    TwoSampleKind, TwoSampleT, WilcoxonSignedRank,
+    FisherExact, KruskalWallis, LogRank, MannWhitney, OneSampleT, OneWayAnova, PairedT,
+    PairwiseComparison, TwoSampleKind, TwoSampleT, WilcoxonSignedRank,
 };
-use graphcraft_table::{ColumnTable, ContingencyTable, XyTable};
+use graphcraft_table::{ColumnTable, ContingencyTable, SurvivalTable, XyTable};
 
 /// Per-group one-sample t-test result on a Column table.
 #[derive(Debug, Clone)]
@@ -191,6 +191,32 @@ fn pair_columns(
         }
     }
     Ok((xs, ys))
+}
+
+/// Two-group log-rank test on a `SurvivalTable`. The two groups
+/// are picked by index into `table.groups`.
+pub fn table_log_rank(
+    table: &SurvivalTable,
+    group_a: usize,
+    group_b: usize,
+) -> Result<LogRank, NumericError> {
+    if group_a >= table.groups.len() || group_b >= table.groups.len() {
+        return Err(NumericError::TooFewValues {
+            required: group_a.max(group_b) + 1,
+            got: table.groups.len(),
+        });
+    }
+    let g1: Vec<(f64, bool)> = table.groups[group_a]
+        .rows
+        .iter()
+        .map(|r| (r.time, r.censored))
+        .collect();
+    let g2: Vec<(f64, bool)> = table.groups[group_b]
+        .rows
+        .iter()
+        .map(|r| (r.time, r.censored))
+        .collect();
+    log_rank(&g1, &g2)
 }
 
 /// Chi-squared independence test on a `ContingencyTable`.

@@ -50,6 +50,7 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | ROC analysis                  | `roc`                | — | Hand-counted small case; perfect-sep AUC |
 | Bland-Altman agreement        | `bland_altman`       | — | Closed-form bias and SD |
 | Two-way ANOVA (balanced)      | `two_way_anova`      | — | Hand-computed 2×2 factorial |
+| Log-rank test + Mantel-Haenszel HR | `log_rank`      | `table_log_rank`       | Hand-computed `χ² = 3` |
 
 ## Descriptive statistics (M3.0)
 
@@ -668,3 +669,40 @@ Deferred to M6.3+:
 - Unbalanced two-way with Type III SS.
 - Repeated-measures 2-way (within-subject factor).
 - Mixed-model and 3-way ANOVA.
+
+## Log-rank test and hazard ratio (M6.4)
+
+`graphcraft_stats::survival::log_rank(group1, group2)` runs the
+two-group log-rank test on raw `(time, censored)` tuples (kept out
+of the L2 table layer; the analysis-layer `table_log_rank` adapts
+from `graphcraft_table::SurvivalRow`).
+
+The event-time axis is the sorted union of distinct event times
+in either group. At each event time `t_i`, the test accumulates
+observed-minus-expected `O − E` in group 1 and the hypergeometric
+variance of that count:
+- `E_1 = n_1 / n · d`;
+- `V = n_1 · (n − n_1) · d · (n − d) / (n² · (n − 1))`.
+
+The returned `LogRank` carries:
+- `chi2 = (Σ (O − E))² / Σ V`, `df = 1`, right-tailed p via
+  `chi2_sf`;
+- Mantel–Haenszel log-hazard-ratio point estimate
+  `log_hr = (O − E) / V` with `se_log_hr = 1 / √V`;
+- `hr = exp(log_hr)` and `hr_ci95 = (exp(log_hr − 1.96 · SE),
+  exp(log_hr + 1.96 · SE))`.
+
+Behaviour references (public):
+- Mantel, N. (1966) *Cancer Chemotherapy Reports* 50, 163–170.
+- Peto, R. & Peto, J. (1972) *JRSS A* 135, 185–207.
+
+Parity rows (new, 4 total):
+- Hand-computed `χ² = 3`, `O − E = 1`, `V = 1/3` on
+  group 1 = `[1, 1]` vs group 2 = `[2, 2]` (all events).
+- `χ² = 0` on identical groups.
+
+Deferred to M6.4+:
+- `k > 2` groups log-rank (uses the full rank-vector form).
+- Weighted / stratified log-rank (Peto-Prentice, Breslow,
+  Harrington-Fleming weights).
+- Cox proportional-hazards regression.

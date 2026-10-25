@@ -1,9 +1,10 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M3–M5 complete, M6.1–M6.3 shipped.**
+Status headline (2026-10-25): **M3–M5 complete, M6.1–M6.4 shipped.**
 Statistics, regression, four graph types with SVG+PDF export,
-correlation, contingency, ROC, Bland-Altman, and two-way ANOVA.
-66 numeric parity rows; graphs tested by structural invariants.
+correlation, contingency, ROC, Bland-Altman, two-way ANOVA, and
+log-rank with Mantel-Haenszel HR. 70 numeric parity rows; graphs
+tested by structural invariants.
 
 ## Honest assessment (2026-10-25)
 
@@ -162,7 +163,12 @@ for everything after.
       effect). Seven new closed-form parity rows on a 2×2
       factorial with n=2 per cell. Unbalanced Type-III SS and
       RM-ANOVA tracked as follow-ups.
-- [ ] M6.4 — Survival statistics (log-rank, hazard ratio)
+- [x] M6.4 — Two-group log-rank test on `(time, censored)` tuples
+      with the Mantel-Haenszel log-hazard-ratio point estimate and
+      95% CI. `log_rank` in stats, `table_log_rank` wrapper over
+      `SurvivalTable` in analysis. Four new closed-form parity
+      rows. `k > 2` groups and stratified / weighted log-rank
+      tracked as follow-ups.
 - [ ] M6.5 — Heatmap graph type + Shapiro-Wilk normality
 ### M7 — Polish, perf budgets, MCP, web build
 
@@ -199,6 +205,7 @@ published reference values, not against Prism.
 | roc | AUC = 1 / 0 / 0.5 on perfect / inverted / hand-counted case | passing | 1e-14 |
 | bland-altman | Closed-form bias = 1.2, SD = √0.7 | passing | 1e-13 |
 | two-way-anova | 2×2 factorial, n=2: `SS_A=18, SS_B=72, SS_AB=8, SS_w=8`; `F=9,36,4` | passing | 1e-13 |
+| log-rank | `[1,1]` vs `[2,2]` → `χ²=3`, `O−E=1`, `V=1/3`; identical groups → `χ²=0` | passing | 1e-13 |
 
 ## Known numerical gaps
 _(none logged yet)_

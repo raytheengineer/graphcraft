@@ -181,6 +181,32 @@ fn fit_library(id: &str, xs: &[f64], ys: &[f64]) -> graphcraft_regression::LmFit
     .unwrap_or_else(|e| panic!("library fit {id} failed: {e:?}"))
 }
 
+type SurvivalGroupPair = (Vec<(f64, bool)>, Vec<(f64, bool)>);
+
+fn load_survival_two_groups(spec: &str) -> SurvivalGroupPair {
+    // `survival:t1;t2||t3;t4` — two groups of event-only times
+    // separated by `||`, individual times by `;`. For censored
+    // times append `c`, e.g. `3c`.
+    let payload = spec
+        .strip_prefix("survival:")
+        .unwrap_or_else(|| panic!("not a survival spec: {spec}"));
+    let parse_group = |s: &str| -> Vec<(f64, bool)> {
+        s.split(';')
+            .map(|t| {
+                if let Some(stripped) = t.strip_suffix('c') {
+                    (stripped.parse::<f64>().unwrap(), true)
+                } else {
+                    (t.parse::<f64>().unwrap(), false)
+                }
+            })
+            .collect()
+    };
+    let (a, b) = payload
+        .split_once("||")
+        .unwrap_or_else(|| panic!("survival spec needs `||`: {spec}"));
+    (parse_group(a), parse_group(b))
+}
+
 fn load_two_way_cells(spec: &str) -> Vec<Vec<Vec<f64>>> {
     // `cells2x2:a;b/c;d//e;f/g;h` — row separator `//`, cell
     // separator `/`, replicate separator `;`.
@@ -451,6 +477,19 @@ fn run(row: &Row) -> f64 {
             "p" => r.p,
             "df" => r.df,
             other => panic!("unknown kruskal-wallis statistic: {other:?}"),
+        };
+    }
+    if row.analysis == "log-rank" {
+        let (g1, g2) = load_survival_two_groups(&row.dataset);
+        let r = graphcraft_stats::log_rank(&g1, &g2).unwrap();
+        return match row.statistic.as_str() {
+            "chi2" => r.chi2,
+            "o_minus_e" => r.o1_minus_e1,
+            "variance" => r.variance,
+            "p" => r.p,
+            "hr" => r.hr,
+            "log_hr" => r.log_hr,
+            other => panic!("unknown log-rank statistic: {other:?}"),
         };
     }
     if row.analysis == "two-way-anova" {
