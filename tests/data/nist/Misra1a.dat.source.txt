@@ -1,0 +1,18 @@
+Source:    NIST StRD Nonlinear Least Squares Regression
+URL:       https://itl.nist.gov/div898/strd/nls/data/misra1a.shtml
+File URL:  https://itl.nist.gov/div898/strd/nls/data/LINKS/DATA/Misra1a.dat
+Dataset:   Misra1a (dental research monomolecular adsorption)
+License:   U.S. Government work — public domain
+Format:    Fixed-column text; data begins after the "Data: y x"
+           marker. One (y, x) pair per non-blank line. 14 observations.
+Model:     y = b1 * (1 − exp(−b2 * x)) + e   (two parameters)
+Starting values:
+    Start 1: b1 = 500,  b2 = 0.0001
+    Start 2: b1 = 250,  b2 = 0.0005
+Certified values used in `tests/parity-matrix.csv`:
+    b1  = 2.3894212918E+02   SD = 2.7070075241E+00
+    b2  = 5.5015643181E-04   SD = 7.2668688436E-06
+    RSS = 1.2455138894E-01
+    Residual SD = 1.0187876330E-01
+    df  = 12,  n = 14
+sha256:    9d3194d537d9a6bbf92eb819504070923a1885d0191f40b6b3aaeedd130b98e2

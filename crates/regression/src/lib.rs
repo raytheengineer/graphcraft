@@ -1,13 +1,15 @@
 //! L3 regression: linear OLS, Levenberg-Marquardt nonlinear fit,
 //! published model library.
 //!
-//! M4.1 ships linear OLS with full Prism-style output (coefficients,
-//! SEs, t-stats, p-values, R², adjusted R², residual SE, overall-F).
-//! M4.2 will add Levenberg-Marquardt; M4.3 the model library.
+//! M4.1 ships linear OLS; M4.2 adds Levenberg-Marquardt nonlinear
+//! fitting via central-difference Jacobian and Marquardt's
+//! diag(JᵀJ) damping. M4.3 will add the published model library.
 
+pub mod lm;
 pub mod matrix;
 pub mod ols;
 
+pub use lm::{levenberg_marquardt, LmFit, LmOptions};
 pub use matrix::{
     back_solve_transposed, cholesky, forward_solve, invert_spd, solve_spd, DenseMatrix,
 };

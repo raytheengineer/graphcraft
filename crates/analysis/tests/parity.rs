@@ -203,6 +203,31 @@ fn run(row: &Row) -> f64 {
             other => panic!("unknown two-sample statistic: {other:?}"),
         };
     }
+    if row.analysis == "misra1a" {
+        // NIST StRD nonlinear benchmark Misra1a:
+        //   y = b1 · (1 − exp(−b2 · x))
+        // Start 2 from the dataset (b1 = 250, b2 = 0.0005).
+        let (xs, ys) = load_regression_pair(&row.dataset);
+        let model = |b: &[f64], x: f64| b[0] * (1.0 - (-b[1] * x).exp());
+        let r = graphcraft_regression::levenberg_marquardt(
+            model,
+            &xs,
+            &ys,
+            &[250.0_f64, 0.0005],
+            graphcraft_regression::LmOptions::default(),
+        )
+        .unwrap();
+        assert!(r.converged, "misra1a LM did not converge");
+        return match row.statistic.as_str() {
+            "b1" => r.params[0],
+            "b2" => r.params[1],
+            "rss" => r.rss,
+            "residual_se" => r.residual_se,
+            "se_b1" => r.se[0],
+            "se_b2" => r.se[1],
+            other => panic!("unknown misra1a statistic: {other:?}"),
+        };
+    }
     if row.analysis == "simple-linear-regression" {
         let (xs, ys) = load_regression_pair(&row.dataset);
         let r = graphcraft_regression::simple_linear_regression(&xs, &ys).unwrap();

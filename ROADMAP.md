@@ -1,8 +1,9 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M3 complete, M4.1 shipped.** Statistics
-through M3 plus linear OLS regression with NIST StRD *Norris* parity.
-35 parity rows live.
+Status headline (2026-10-25): **M3 complete, M4.1 + M4.2 shipped.**
+Statistics through M3 plus linear OLS and Levenberg-Marquardt
+nonlinear regression, with NIST StRD *Norris* and *Misra1a* parity.
+39 parity rows live.
 
 ## Honest assessment (2026-10-25)
 
@@ -111,7 +112,12 @@ for everything after.
       SE, overall F). `simple_linear_regression` and `ols_fit`.
       Analysis wrappers `xy_simple_regression`, `column_simple_regression`.
       NIST StRD *Norris* parity: 6 rows at 1e-11 or tighter.
-- [ ] M4.2 — Levenberg-Marquardt nonlinear fitting
+- [x] M4.2 — Levenberg-Marquardt nonlinear fitting via Marquardt's
+      `diag(JᵀJ)` damping and central-difference Jacobian.
+      `levenberg_marquardt(f, xs, ys, initial, opts)` →
+      `LmFit { params, se, rss, residual_se, R², adj R², F, n_iter,
+      converged, final_lambda, … }`. NIST StRD *Misra1a* parity:
+      4 rows at 1e-5 or tighter (b1, b2, RSS, residual SD).
 - [ ] M4.3 — Published model library (one-site binding, Hill /
       dose-response, Michaelis-Menten, exponential decay, …)
 ### M5 — Core graphs (XY, Column, Grouped, Survival) + SVG/PDF export
@@ -143,6 +149,7 @@ published reference values, not against Prism.
 | wilcoxon-signed-rank | Closed form `Z = 7/√13.75` on diffs `[1..5]` | passing | 1e-13 |
 | kruskal-wallis | Closed form `H=7.2`, `p=e⁻³·⁶` on arithmetic groups | passing | 1e-12 |
 | simple-linear-regression | NIST StRD *Norris* (B0, B1, SE B0, SE B1, R², residual SD) | passing | 1e-11 |
+| misra1a (LM) | NIST StRD *Misra1a* (b1, b2, RSS, residual SD) | passing | 1e-5 |
 
 ## Known numerical gaps
 _(none logged yet)_

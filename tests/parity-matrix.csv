@@ -39,3 +39,7 @@ simple-linear-regression,nist-regr:tests/data/nist/Norris.dat,se_b0,0.2328182343
 simple-linear-regression,nist-regr:tests/data/nist/Norris.dat,se_b1,0.429796848199937e-3,1e-11,https://itl.nist.gov/div898/strd/lls/data/Norris.shtml
 simple-linear-regression,nist-regr:tests/data/nist/Norris.dat,r_squared,0.999993745883712,1e-13,https://itl.nist.gov/div898/strd/lls/data/Norris.shtml
 simple-linear-regression,nist-regr:tests/data/nist/Norris.dat,residual_se,0.884796396144373,1e-11,https://itl.nist.gov/div898/strd/lls/data/Norris.shtml
+misra1a,nist-regr:tests/data/nist/Misra1a.dat,b1,238.94212918,1e-6,https://itl.nist.gov/div898/strd/nls/data/misra1a.shtml
+misra1a,nist-regr:tests/data/nist/Misra1a.dat,b2,5.5015643181e-4,1e-6,https://itl.nist.gov/div898/strd/nls/data/misra1a.shtml
+misra1a,nist-regr:tests/data/nist/Misra1a.dat,rss,0.12455138894,1e-5,https://itl.nist.gov/div898/strd/nls/data/misra1a.shtml
+misra1a,nist-regr:tests/data/nist/Misra1a.dat,residual_se,0.10187876330,1e-5,https://itl.nist.gov/div898/strd/nls/data/misra1a.shtml

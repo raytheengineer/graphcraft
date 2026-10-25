@@ -40,6 +40,7 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | Kruskal-Wallis H              | `kruskal_wallis`     | `column_kruskal_wallis` | Closed form `H=7.2`, `p=e^{−3.6}` |
 | Dunn's post-hoc               | `dunns_test`         | `column_dunns_test`    | Verified via KW mean-rank structure |
 | Linear regression (OLS)       | `graphcraft_regression::{ols_fit, simple_linear_regression}` | `xy_simple_regression`, `column_simple_regression` | NIST StRD *Norris* at 1e-11 |
+| Nonlinear fit (Levenberg-Marquardt) | `graphcraft_regression::levenberg_marquardt` | (model library in M4.3) | NIST StRD *Misra1a* at 1e-6 |
 
 ## Descriptive statistics (M3.0)
 
@@ -428,3 +429,41 @@ Deferred to M4.1+:
 - Confidence intervals and prediction bands.
 - Regression diagnostics (leverage, Cook's distance, Studentized
   residuals).
+
+## Nonlinear regression — Levenberg-Marquardt (M4.2)
+
+`graphcraft_regression::levenberg_marquardt(f, xs, ys, initial, opts)`
+fits `y_i = f(x_i; β) + ε` by minimising `Σ r_i²` with the
+Marquardt step
+`(JᵀJ + λ · diag(JᵀJ)) · δ = Jᵀr`.
+λ starts at `1e-3`; a successful step scales it by `0.1`, a
+rejected step by `10`. The Jacobian is computed by central
+differences in parameter space with a scale-aware step
+`h_j = √ε · max(|β_j|, 1)`. Convergence declares when either
+`|ΔS| ≤ ftol·(S + ftol)` or every component of `δ_j` satisfies
+`|δ_j| ≤ ptol·(|β_j| + ptol)`.
+
+`LmFit` returns, alongside the parameter estimates:
+- fitted values, residuals, RSS, residual SE;
+- standard errors from `σ̂²·(JᵀJ)⁻¹` at the solution;
+- R², adjusted R², overall-F against the mean model;
+- `n_iter`, `converged`, `final_lambda` for diagnosability.
+
+Behaviour references (public):
+- Marquardt, D. W. (1963) *J. SIAM* 11, 431–441.
+- Moré, J. J. (1978) in *Numerical Analysis* (G. A. Watson ed.),
+  Lecture Notes in Mathematics 630, 105–116, Springer.
+
+Parity rows (new):
+- NIST StRD *Misra1a* — exponential adsorption model
+  `y = b1·(1 − exp(−b2·x))`, 14 observations (public domain). Four
+  rows against the certified values at tolerance 1e-5 or tighter:
+  `b1 ≈ 238.942`, `b2 ≈ 5.502·10⁻⁴`, `RSS ≈ 0.12455`, residual
+  SD ≈ 0.10188. Fit converges from Start 2 (`b1=250, b2=5e-4`).
+
+Deferred to M4.2+:
+- Analytic-Jacobian path (currently central differences).
+- Robust loss functions (Huber, bisquare).
+- Weighted / constrained fits.
+- Bootstrap confidence intervals.
+- The harder NIST nonlinear datasets (Thurber, BoxBOD, MGH-family).
