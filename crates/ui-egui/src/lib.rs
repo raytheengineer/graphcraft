@@ -72,6 +72,19 @@ pub struct AppState {
     configure: ConfigureGraphForm,
     /// File backend injected by the host app.
     files: Box<dyn FileService>,
+    /// Currently-editing data cell, if any.
+    editing: Option<EditingCell>,
+}
+
+/// Which cell the user is currently editing. The buffer carries
+/// their in-progress text; Enter / focus-lost commits, Escape
+/// discards.
+#[derive(Debug, Clone)]
+struct EditingCell {
+    sheet: SheetId,
+    col: usize,
+    row: usize,
+    buffer: String,
 }
 
 #[derive(Default)]
@@ -102,6 +115,7 @@ impl AppState {
             modal: ModalKind::None,
             configure: ConfigureGraphForm::default(),
             files,
+            editing: None,
         }
     }
 }
@@ -474,8 +488,8 @@ impl AppState {
         ui.separator();
 
         match self.project.get(id).map(|s| &s.body) {
-            Some(SheetBody::Data { table }) => {
-                self.render_data_preview(ui, table);
+            Some(SheetBody::Data { .. }) => {
+                self.render_data_pane(ui, id);
             }
             Some(SheetBody::Analysis { result, .. }) => {
                 let text = serde_json::to_string_pretty(result).unwrap_or_default();
@@ -615,36 +629,90 @@ impl AppState {
         }
     }
 
-    fn render_data_preview(&self, ui: &mut Ui, table: &graphcraft_table::AnyTable) {
+    fn render_data_pane(&mut self, ui: &mut Ui, id: SheetId) {
         use graphcraft_table::AnyTable;
-        let t: std::borrow::Cow<graphcraft_table::ColumnTable> = match table {
-            AnyTable::Column(t) => std::borrow::Cow::Borrowed(t),
-            AnyTable::Xy(xy) => std::borrow::Cow::Owned(xy_as_column_view(xy)),
-            _ => {
-                ui.label("(preview grid for this table kind lands in M9.6)");
-                return;
-            }
+        // Classify the source table shape without borrowing it
+        // across the mutation below.
+        let kind: &'static str = match self.project.get(id).map(|s| &s.body) {
+            Some(SheetBody::Data {
+                table: AnyTable::Column(_),
+            }) => "column",
+            Some(SheetBody::Data {
+                table: AnyTable::Xy(_),
+            }) => "xy",
+            _ => "other",
         };
-        let t = t.as_ref();
-        let n_rows = t.columns.iter().map(|c| c.values.len()).max().unwrap_or(0);
+        if kind == "column" {
+            self.render_column_grid(ui, id);
+        } else if kind == "xy" {
+            self.render_xy_preview(ui, id);
+        } else {
+            ui.label("(preview grid for this table kind lands later)");
+        }
+    }
+
+    fn render_column_grid(&mut self, ui: &mut Ui, id: SheetId) {
+        use graphcraft_table::{AnyTable, Column};
+        // Toolbar — Add row / Add column.
+        ui.horizontal(|ui| {
+            if ui.small_button("+ Row").clicked() {
+                if let Some(SheetBody::Data {
+                    table: AnyTable::Column(t),
+                }) = self.project.get_mut(id).map(|s| &mut s.body)
+                {
+                    for col in &mut t.columns {
+                        col.values.push(None);
+                    }
+                }
+            }
+            if ui.small_button("+ Column").clicked() {
+                if let Some(SheetBody::Data {
+                    table: AnyTable::Column(t),
+                }) = self.project.get_mut(id).map(|s| &mut s.body)
+                {
+                    let n_rows = t.columns.iter().map(|c| c.values.len()).max().unwrap_or(0);
+                    let name = format!("col{}", t.columns.len() + 1);
+                    t.columns.push(Column {
+                        title: name,
+                        values: vec![None; n_rows],
+                    });
+                }
+            }
+            ui.label(
+                RichText::new("Click a cell to edit, Enter to commit, Esc to cancel.")
+                    .weak()
+                    .small(),
+            );
+        });
+
+        // Snapshot the current shape so grid rendering doesn't
+        // hold onto a borrow of self.project while we handle
+        // commits.
+        let (n_cols, n_rows, titles): (usize, usize, Vec<String>) =
+            match self.project.get(id).map(|s| &s.body) {
+                Some(SheetBody::Data {
+                    table: AnyTable::Column(t),
+                }) => (
+                    t.columns.len(),
+                    t.columns.iter().map(|c| c.values.len()).max().unwrap_or(0),
+                    t.columns.iter().map(|c| c.title.clone()).collect(),
+                ),
+                _ => return,
+            };
         let shown = n_rows.min(50);
+
         ScrollArea::both().show(ui, |ui| {
-            egui::Grid::new("data-grid")
+            egui::Grid::new(("data-grid", id.0))
                 .striped(true)
                 .spacing(egui::vec2(14.0, 2.0))
                 .show(ui, |ui| {
-                    for c in &t.columns {
-                        ui.label(RichText::new(&c.title).strong());
+                    for t in &titles {
+                        ui.label(RichText::new(t).strong());
                     }
                     ui.end_row();
                     for r in 0..shown {
-                        for c in &t.columns {
-                            let v = c.values.get(r).and_then(|v| v.as_ref());
-                            let text = match v {
-                                Some(v) => format!("{v}"),
-                                None => String::new(),
-                            };
-                            ui.monospace(text);
+                        for c in 0..n_cols {
+                            self.render_cell(ui, id, c, r);
                         }
                         ui.end_row();
                     }
@@ -656,6 +724,142 @@ impl AppState {
                         .small(),
                 );
             }
+        });
+    }
+
+    fn render_cell(&mut self, ui: &mut Ui, sheet: SheetId, col: usize, row: usize) {
+        use graphcraft_table::AnyTable;
+        let is_editing = self
+            .editing
+            .as_ref()
+            .is_some_and(|e| e.sheet == sheet && e.col == col && e.row == row);
+        if is_editing {
+            let (commit, cancel) = self.render_editing_cell(ui);
+            if commit {
+                self.commit_editing_cell();
+            } else if cancel {
+                self.editing = None;
+            }
+        } else {
+            // Read current cell value for display.
+            let text = match self.project.get(sheet).map(|s| &s.body) {
+                Some(SheetBody::Data {
+                    table: AnyTable::Column(t),
+                }) => t
+                    .columns
+                    .get(col)
+                    .and_then(|c| c.values.get(row).copied().flatten())
+                    .map(|v| format!("{v}"))
+                    .unwrap_or_default(),
+                _ => String::new(),
+            };
+            let response = ui.add(
+                egui::Label::new(
+                    RichText::new(if text.is_empty() { "·" } else { &text }).monospace(),
+                )
+                .sense(egui::Sense::click()),
+            );
+            if response.clicked() {
+                self.editing = Some(EditingCell {
+                    sheet,
+                    col,
+                    row,
+                    buffer: text,
+                });
+            }
+        }
+    }
+
+    fn render_editing_cell(&mut self, ui: &mut Ui) -> (bool, bool) {
+        let buffer = match self.editing.as_mut() {
+            Some(e) => &mut e.buffer,
+            None => return (false, false),
+        };
+        let response = ui.add(
+            TextEdit::singleline(buffer)
+                .desired_width(60.0)
+                .font(egui::TextStyle::Monospace),
+        );
+        if !response.has_focus() {
+            response.request_focus();
+        }
+        let commit = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let cancel_now = ui.input(|i| i.key_pressed(egui::Key::Escape));
+        (commit, cancel_now)
+    }
+
+    fn commit_editing_cell(&mut self) {
+        use graphcraft_table::AnyTable;
+        let e = match self.editing.take() {
+            Some(e) => e,
+            None => return,
+        };
+        let parsed: Option<Option<f64>> = if e.buffer.trim().is_empty() {
+            Some(None)
+        } else {
+            match e.buffer.trim().parse::<f64>() {
+                Ok(v) if v.is_finite() => Some(Some(v)),
+                _ => None,
+            }
+        };
+        let Some(new_val) = parsed else {
+            self.status_line = format!("rejected {:?}: must be a finite number or empty", e.buffer);
+            return;
+        };
+        if let Some(SheetBody::Data {
+            table: AnyTable::Column(t),
+        }) = self.project.get_mut(e.sheet).map(|s| &mut s.body)
+        {
+            if let Some(col) = t.columns.get_mut(e.col) {
+                while col.values.len() <= e.row {
+                    col.values.push(None);
+                }
+                col.values[e.row] = new_val;
+            }
+        }
+        self.status_line = format!("edited r{} c{} of #{}", e.row, e.col, e.sheet.0);
+    }
+
+    fn render_xy_preview(&mut self, ui: &mut Ui, id: SheetId) {
+        use graphcraft_table::AnyTable;
+        ui.label(
+            RichText::new("XY-table in-grid editing comes later; preview is read-only.")
+                .weak()
+                .small(),
+        );
+        let view = match self.project.get(id).map(|s| &s.body) {
+            Some(SheetBody::Data {
+                table: AnyTable::Xy(xy),
+            }) => xy_as_column_view(xy),
+            _ => return,
+        };
+        let n_rows = view
+            .columns
+            .iter()
+            .map(|c| c.values.len())
+            .max()
+            .unwrap_or(0);
+        let shown = n_rows.min(50);
+        ScrollArea::both().show(ui, |ui| {
+            egui::Grid::new(("xy-preview", id.0))
+                .striped(true)
+                .spacing(egui::vec2(14.0, 2.0))
+                .show(ui, |ui| {
+                    for c in &view.columns {
+                        ui.label(RichText::new(&c.title).strong());
+                    }
+                    ui.end_row();
+                    for r in 0..shown {
+                        for c in &view.columns {
+                            let v = c.values.get(r).and_then(|v| v.as_ref());
+                            ui.monospace(match v {
+                                Some(v) => format!("{v}"),
+                                None => String::new(),
+                            });
+                        }
+                        ui.end_row();
+                    }
+                });
         });
     }
 
