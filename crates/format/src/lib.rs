@@ -47,14 +47,84 @@ pub struct Sheet {
     pub body: SheetBody,
 }
 
-/// What a sheet actually holds. New variants (Analysis, Graph,
-/// Layout) land in later M8 slices; the serde tag keeps old files
-/// forward-readable.
+/// What a sheet actually holds. New variants (Graph, Layout) land
+/// in later M8 slices; the serde tag keeps old files forward-
+/// readable.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SheetBody {
     /// A data table of one of the 8 Prism-style layouts.
     Data { table: AnyTable },
+    /// An analysis bound to a data sheet, with its parameters and
+    /// cached result. The result shape depends on `spec` and is
+    /// stored as a JSON value for format stability; the running
+    /// dispatcher lives in `graphcraft_analysis`.
+    Analysis {
+        /// Id of the data sheet this analysis consumed.
+        source: SheetId,
+        /// Which analysis, with its parameters.
+        spec: AnalysisSpec,
+        /// Cached result (shape depends on `spec`). On failure the
+        /// dispatcher stores `{ "error": "..." }` so the sheet
+        /// always carries a readable record.
+        #[serde(default)]
+        result: serde_json::Value,
+        /// Content hash of the source table at the time the result
+        /// was computed. Used by M8.4 staleness; `None` means the
+        /// sheet was never computed (or came from an older file).
+        #[serde(default)]
+        source_hash: Option<String>,
+    },
+}
+
+/// Which analysis to run, along with its parameters.
+///
+/// Column references are strings interpreted at run time as either
+/// a 0-based index or the exact header name, matching the CLI and
+/// MCP conventions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum AnalysisSpec {
+    /// Descriptive statistics over all non-empty columns.
+    Descriptives,
+    /// One-way ANOVA across all non-empty columns.
+    OneWayAnova,
+    /// Welch's two-sample t-test on columns `a` and `b`.
+    WelchT { a: String, b: String },
+    /// Pearson correlation on columns `a` and `b` (also returns
+    /// Spearman alongside for free).
+    Pearson { a: String, b: String },
+    /// Simple linear OLS regression `y ~ x`.
+    OlsRegression { x: String, y: String },
+    /// Shapiro–Wilk normality on one column.
+    ShapiroWilk { col: String },
+}
+
+impl AnalysisSpec {
+    /// Short stable id — "descriptives", "pearson", … — used for
+    /// routing and in default titles.
+    pub fn id(&self) -> &'static str {
+        match self {
+            Self::Descriptives => "descriptives",
+            Self::OneWayAnova => "one-way-anova",
+            Self::WelchT { .. } => "welch-t",
+            Self::Pearson { .. } => "pearson",
+            Self::OlsRegression { .. } => "ols-regression",
+            Self::ShapiroWilk { .. } => "shapiro-wilk",
+        }
+    }
+
+    /// Human-readable default title for a sheet carrying this spec.
+    pub fn default_title(&self) -> String {
+        match self {
+            Self::Descriptives => "Descriptives".to_string(),
+            Self::OneWayAnova => "One-way ANOVA".to_string(),
+            Self::WelchT { a, b } => format!("Welch t: {a} vs {b}"),
+            Self::Pearson { a, b } => format!("Pearson: {a} vs {b}"),
+            Self::OlsRegression { x, y } => format!("OLS: {y} ~ {x}"),
+            Self::ShapiroWilk { col } => format!("Shapiro-Wilk: {col}"),
+        }
+    }
 }
 
 /// A GraphCraft project — the top of the file, and the in-memory
@@ -115,6 +185,22 @@ impl Project {
             .iter()
             .filter(|s| matches!(s.body, SheetBody::Data { .. }))
             .count()
+    }
+
+    /// Count sheets whose body is an Analysis sheet.
+    pub fn analysis_sheet_count(&self) -> usize {
+        self.sheets
+            .iter()
+            .filter(|s| matches!(s.body, SheetBody::Analysis { .. }))
+            .count()
+    }
+
+    /// If `id` refers to a Data sheet, return its table.
+    pub fn data_sheet_table(&self, id: SheetId) -> Option<&AnyTable> {
+        match self.get(id)?.body {
+            SheetBody::Data { ref table } => Some(table),
+            _ => None,
+        }
     }
 }
 

@@ -202,6 +202,10 @@ fn load_csv(csv: &str) -> Result<ColumnTable, (i32, String)> {
             table: AnyTable::Column(t),
         }) => Ok(t),
         Some(SheetBody::Data { .. }) => Err((-32603, "expected a Column data sheet".into())),
+        Some(SheetBody::Analysis { .. }) => Err((
+            -32603,
+            "expected a Data sheet, got an Analysis sheet".into(),
+        )),
         None => Err((-32603, "empty project".into())),
     }
 }

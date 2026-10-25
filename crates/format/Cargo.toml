@@ -10,8 +10,6 @@ description = "L4: .graphcraft file format read/write; CSV import. No .pzfx."
 
 [dependencies]
 graphcraft_table = { path = "../table" }
-graphcraft_analysis = { path = "../analysis" }
-graphcraft_plot = { path = "../plot" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

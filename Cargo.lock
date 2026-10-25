@@ -75,10 +75,12 @@ dependencies = [
 name = "graphcraft_analysis"
 version = "0.0.1"
 dependencies = [
+ "graphcraft_format",
  "graphcraft_numeric",
  "graphcraft_regression",
  "graphcraft_stats",
  "graphcraft_table",
+ "serde_json",
 ]
 
 [[package]]
@@ -101,8 +103,6 @@ dependencies = [
 name = "graphcraft_format"
 version = "0.0.1"
 dependencies = [
- "graphcraft_analysis",
- "graphcraft_plot",
  "graphcraft_table",
  "serde",
  "serde_json",

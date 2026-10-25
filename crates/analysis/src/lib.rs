@@ -1,10 +1,12 @@
 //! L4 analysis layer.
 //!
-//! The parity harness in `tests/parity.rs` consumes
-//! `tests/parity-matrix.csv` to drive output-parity acceptance tests.
-//!
-//! First analysis (M3.0): per-group descriptive statistics on a
-//! Column table.
+//! Project-level dispatch (M8.2+) lives in [`project`]; the
+//! column-table-based wrappers below sit beneath it. The parity
+//! harness in `tests/parity.rs` consumes `tests/parity-matrix.csv`
+//! to drive output-parity acceptance tests.
+
+pub mod project;
+pub use project::{add_analysis_sheet, run_analysis, AnalysisError};
 
 use graphcraft_numeric::NumericError;
 use graphcraft_regression::{simple_linear_regression, OlsFit};

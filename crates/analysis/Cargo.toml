@@ -9,10 +9,12 @@ authors.workspace = true
 description = "L4: analysis definitions, inputs, options, results tree."
 
 [dependencies]
+graphcraft_format = { path = "../format" }
 graphcraft_numeric = { path = "../numeric" }
 graphcraft_stats = { path = "../stats" }
 graphcraft_regression = { path = "../regression" }
 graphcraft_table = { path = "../table" }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

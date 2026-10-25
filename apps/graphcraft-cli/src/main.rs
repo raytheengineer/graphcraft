@@ -283,9 +283,13 @@ fn do_chi2(csv: &str) -> ExitCode {
         Some(SheetBody::Data {
             table: AnyTable::Column(t),
         }) => t.clone(),
-        _ => {
+        Some(SheetBody::Data { .. }) => {
             return err_out("csv did not import as a Column data sheet");
         }
+        Some(SheetBody::Analysis { .. }) => {
+            return err_out("first sheet is Analysis; chi2 needs Data");
+        }
+        None => return err_out("empty project"),
     };
     let mut counts: Vec<Vec<u64>> = Vec::with_capacity(table.row_titles.len().max(1));
     let n_rows = table.columns.first().map(|c| c.values.len()).unwrap_or(0);
@@ -423,6 +427,9 @@ fn load_column_table(src: &str) -> Result<ColumnTable, ExitCode> {
             table: AnyTable::Column(t),
         }) => Ok(t),
         Some(SheetBody::Data { .. }) => Err(err_out("expected a Column table (CSV import)")),
+        Some(SheetBody::Analysis { .. }) => {
+            Err(err_out("expected a Data sheet, got an Analysis sheet"))
+        }
         None => Err(err_out("empty project")),
     }
 }
