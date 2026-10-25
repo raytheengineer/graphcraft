@@ -166,6 +166,27 @@ pub enum Series {
         points: Vec<(f64, f64)>,
         style: LineStyle,
     },
+    /// A heatmap grid of coloured cells. Cells are addressed by
+    /// `(row, col)` with row 0 at the top and column 0 on the left.
+    Heatmap {
+        label: String,
+        n_rows: usize,
+        n_cols: usize,
+        cells: Vec<HeatmapCell>,
+        row_labels: Vec<String>,
+        col_labels: Vec<String>,
+        vmin: f64,
+        vmax: f64,
+    },
+}
+
+/// One rendered heatmap cell.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct HeatmapCell {
+    pub row: usize,
+    pub col: usize,
+    pub value: Option<f64>,
+    pub color: Color,
 }
 
 impl Series {
@@ -175,7 +196,8 @@ impl Series {
             | Series::Line { label, .. }
             | Series::Bars { label, .. }
             | Series::GroupedBars { label, .. }
-            | Series::CensorTicks { label, .. } => label,
+            | Series::CensorTicks { label, .. }
+            | Series::Heatmap { label, .. } => label,
         }
     }
 }

@@ -11,6 +11,7 @@
 
 pub mod column;
 pub mod grouped;
+pub mod heatmap;
 pub mod scene;
 pub mod survival;
 pub mod ticks;
@@ -18,9 +19,10 @@ pub mod xy;
 
 pub use column::{column_scene, column_scene_from_bars, ColumnErrorBars, ColumnOptions};
 pub use grouped::{grouped_scene, GroupedErrorBars, GroupedOptions};
+pub use heatmap::{colormap_sample, heatmap_scene, Colormap, HeatmapData, HeatmapOptions};
 pub use scene::{
-    Axis, AxisScale, Color, ColumnBar, GroupedBar, Legend, LegendPosition, LineStyle, Marker,
-    MarkerStyle, Scene, Series,
+    Axis, AxisScale, Color, ColumnBar, GroupedBar, HeatmapCell, Legend, LegendPosition, LineStyle,
+    Marker, MarkerStyle, Scene, Series,
 };
 pub use survival::{km_estimate, survival_scene, SurvivalOptions};
 pub use ticks::{nice_linear, NiceAxis};

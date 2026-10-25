@@ -244,6 +244,54 @@ pub fn render_svg(scene: &Scene) -> String {
                     );
                 }
             }
+            Series::Heatmap {
+                n_rows,
+                n_cols,
+                cells,
+                row_labels,
+                col_labels,
+                ..
+            } => {
+                // Place cells in the plot rect. Row 0 at the top.
+                let cell_w = pw / *n_cols as f64;
+                let cell_h = ph / *n_rows as f64;
+                for cell in cells {
+                    let x = px + cell.col as f64 * cell_w;
+                    let y = py + cell.row as f64 * cell_h;
+                    let _ = writeln!(
+                        out,
+                        r#"<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{c}" stroke="{s}" stroke-width="0.5"/>"#,
+                        x = fmt_f(x),
+                        y = fmt_f(y),
+                        w = fmt_f(cell_w),
+                        h = fmt_f(cell_h),
+                        c = fmt_color(cell.color),
+                        s = fmt_color(Color::WHITE),
+                    );
+                }
+                // Column labels along the top edge.
+                for (j, label) in col_labels.iter().enumerate() {
+                    let x = px + (j as f64 + 0.5) * cell_w;
+                    let _ = writeln!(
+                        out,
+                        r#"<text x="{x}" y="{y}" text-anchor="middle" font-family="sans-serif" font-size="10" fill="black">{t}</text>"#,
+                        x = fmt_f(x),
+                        y = fmt_f(py - 4.0),
+                        t = escape_xml(label),
+                    );
+                }
+                // Row labels along the left edge.
+                for (i, label) in row_labels.iter().enumerate() {
+                    let y = py + (i as f64 + 0.5) * cell_h + 3.0;
+                    let _ = writeln!(
+                        out,
+                        r#"<text x="{x}" y="{y}" text-anchor="end" font-family="sans-serif" font-size="10" fill="black">{t}</text>"#,
+                        x = fmt_f(px - 6.0),
+                        y = fmt_f(y),
+                        t = escape_xml(label),
+                    );
+                }
+            }
         }
     }
 
@@ -329,6 +377,7 @@ fn render_legend(out: &mut String, scene: &Scene, legend: &Legend) {
             | Series::Bars { marker, .. }
             | Series::GroupedBars { marker, .. } => marker.fill,
             Series::Line { style, .. } | Series::CensorTicks { style, .. } => style.stroke,
+            Series::Heatmap { .. } => Color::BLACK,
         };
         let _ = writeln!(
             out,

@@ -236,6 +236,50 @@ fn build_content(scene: &Scene) -> String {
                     }
                 }
             }
+            Series::Heatmap {
+                n_rows,
+                n_cols,
+                cells,
+                row_labels,
+                col_labels,
+                ..
+            } => {
+                let cell_w = pw / *n_cols as f64;
+                let cell_h = ph / *n_rows as f64;
+                for cell in cells {
+                    // Row 0 is drawn at the top of the plot in scene
+                    // coordinates. In PDF-y (upward), that is near
+                    // the top of the plot: plot_top_pdf − row·cell_h.
+                    let x = px + cell.col as f64 * cell_w;
+                    let y_top = plot_top_pdf - cell.row as f64 * cell_h;
+                    let y_bot = y_top - cell_h;
+                    emit_fill_color(&mut c, cell.color);
+                    emit_stroke_color(&mut c, Color::WHITE);
+                    let _ = writeln!(
+                        c,
+                        "0.5 w {x} {y} {w} {h} re B",
+                        x = fmt_f(x),
+                        y = fmt_f(y_bot),
+                        w = fmt_f(cell_w),
+                        h = fmt_f(y_top - y_bot),
+                    );
+                }
+                for (j, label) in col_labels.iter().enumerate() {
+                    let x = px + (j as f64 + 0.5) * cell_w;
+                    emit_text(
+                        &mut c,
+                        x,
+                        plot_top_pdf + 4.0,
+                        10.0,
+                        TextAnchor::Middle,
+                        label,
+                    );
+                }
+                for (i, label) in row_labels.iter().enumerate() {
+                    let y = plot_top_pdf - (i as f64 + 0.5) * cell_h - 3.0;
+                    emit_text(&mut c, px - 6.0, y, 10.0, TextAnchor::End, label);
+                }
+            }
             Series::CensorTicks { points, style, .. } => {
                 emit_stroke_color(&mut c, style.stroke);
                 let _ = writeln!(c, "{w} w", w = fmt_f(style.width_pt));
@@ -403,6 +447,7 @@ fn draw_legend(c: &mut String, scene: &Scene, legend: &Legend, top: f64, bottom:
             | Series::Bars { marker, .. }
             | Series::GroupedBars { marker, .. } => marker.fill,
             Series::Line { style, .. } | Series::CensorTicks { style, .. } => style.stroke,
+            Series::Heatmap { .. } => Color::BLACK,
         };
         emit_fill_color(c, color);
         let _ = writeln!(

@@ -116,6 +116,25 @@ Reference (behaviour): Adobe Systems (2006), *PDF Reference, sixth
 edition, version 1.7*, §3 and §8. Classical page-description
 model.
 
+## Heatmap (M6.5)
+
+`graphcraft_plot::heatmap_scene(data, &HeatmapOptions)` renders a
+2D grid of coloured cells from a `HeatmapData { values, row_titles,
+col_titles }`. `values` is a row-major `&[Vec<Option<f64>>]`;
+`None` cells are drawn in neutral grey.
+
+The `Series::Heatmap` scene variant carries the cells and the
+labels along with the computed `(vmin, vmax)`. Three colormaps
+ship, all with sampling via `colormap_sample(cm, v, vmin, vmax)`:
+
+| Name | Low → High |
+| --- | --- |
+| `DivergingBlueRed` | blue → white → red (correlation heatmaps) |
+| `Grayscale` | white → black |
+| `SequentialBlue` | light-blue → mid-blue → dark-blue |
+
+Both SVG and PDF renderers now draw `Series::Heatmap`.
+
 ## Deferred
 - Multi-dataset XY overlays, mean±SD error bars, fit-line
   overlays.

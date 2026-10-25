@@ -1,10 +1,11 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M3–M5 complete, M6.1–M6.4 shipped.**
-Statistics, regression, four graph types with SVG+PDF export,
-correlation, contingency, ROC, Bland-Altman, two-way ANOVA, and
-log-rank with Mantel-Haenszel HR. 70 numeric parity rows; graphs
-tested by structural invariants.
+Status headline (2026-10-25): **M3–M5 complete, M6.1–M6.5 shipped.**
+Statistics, regression, five graph types with SVG+PDF export
+(XY, Column, Grouped, Survival, Heatmap), correlation,
+contingency, ROC, Bland-Altman, two-way ANOVA, log-rank.
+70 numeric parity rows; graphs tested by structural invariants.
+Shapiro-Wilk is the lone open item before M7.
 
 ## Honest assessment (2026-10-25)
 
@@ -169,7 +170,15 @@ for everything after.
       `SurvivalTable` in analysis. Four new closed-form parity
       rows. `k > 2` groups and stratified / weighted log-rank
       tracked as follow-ups.
-- [ ] M6.5 — Heatmap graph type + Shapiro-Wilk normality
+- [x] M6.5 — Heatmap scene builder (`heatmap_scene` with three
+      colormaps: DivergingBlueRed, Grayscale, SequentialBlue);
+      `Series::Heatmap` variant drawn by both SVG and PDF
+      renderers; `None` cells rendered neutral grey. M6 near-
+      complete; the only remaining open item on M6 is a dedicated
+      normality-tests slice (Shapiro-Wilk via Royston 1992).
+- [ ] M6.6 — Shapiro-Wilk normality test (via Royston 1992
+      polynomial approximation; follow-up because the published
+      coefficient tables are a careful transcription slice)
 ### M7 — Polish, perf budgets, MCP, web build
 
 ## Parity table
