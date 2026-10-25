@@ -54,12 +54,43 @@ fn parse_matrix(csv: &str) -> Vec<Row> {
 }
 
 fn load_dataset(spec: &str) -> Vec<f64> {
-    // Only inline form is wired for M1: inline:1;2;3
+    // Inline toy data:  inline:1;2;3
     if let Some(payload) = spec.strip_prefix("inline:") {
         return payload
             .split(';')
             .map(|s| s.parse::<f64>().expect("inline value f64"))
             .collect();
+    }
+    // NIST StRD univariate `.dat` file:  nist-univar:tests/data/nist/Lew.dat
+    //
+    // The StRD univariate `.dat` files carry a long human-readable
+    // header followed by a `Data: Y` marker, a dashed separator, and
+    // one f64 per non-blank line. We tolerate either `Data:` casing.
+    if let Some(relative) = spec.strip_prefix("nist-univar:") {
+        let path = workspace_root().join(relative);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        // StRD univariate files use a dashed separator line between the
+        // header and the data block. Everything after the first all-`-`
+        // line is one f64 per non-blank line.
+        let mut found_separator = false;
+        let mut xs = Vec::new();
+        for line in text.lines() {
+            let t = line.trim();
+            if !found_separator {
+                if !t.is_empty() && t.chars().all(|c| c == '-') {
+                    found_separator = true;
+                }
+                continue;
+            }
+            if t.is_empty() {
+                continue;
+            }
+            let v: f64 = t.parse().unwrap_or_else(|_| panic!("bad f64: {t:?}"));
+            xs.push(v);
+        }
+        assert!(found_separator, "no dashed separator in {}", path.display());
+        return xs;
     }
     panic!("unsupported dataset spec: {spec}");
 }

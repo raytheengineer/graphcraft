@@ -1,0 +1,33 @@
+NIST Statistical Reference Datasets (StRD): Lew (Beam Deflection Data)
+
+Source URL:
+  https://itl.nist.gov/div898/strd/univ/data/Lew.dat
+Catalog page:
+  https://itl.nist.gov/div898/strd/univ/lew.html
+Downloaded:
+  2026-10-25
+
+License / provenance:
+  Public domain. NIST Statistical Reference Datasets are produced by the
+  U.S. National Institute of Standards and Technology, an agency of the
+  U.S. federal government; works of the U.S. federal government are not
+  subject to copyright protection under 17 U.S.C. §105 and are in the
+  public domain in the United States. See the StRD homepage, which also
+  describes the datasets as being provided "for use by anyone" to assess
+  statistical software accuracy.
+
+SHA-256 of Lew.dat:
+  081b231f686d01fa00247b8072909206947c8321bd62e060d9aaae5f4866c44e
+
+Certified values (verbatim from the header of Lew.dat):
+  Sample Mean                                ybar:  -177.435000000000
+  Sample Standard Deviation (denom. = n-1)      s:   277.332168044316
+  Sample Autocorrelation Coefficient (lag 1) r(1):  -0.307304800605679
+
+Number of observations: 200
+Lower Level of Difficulty (per the NIST classification).
+
+GraphCraft uses this file as a public reference oracle in the parity
+matrix (see tests/parity-matrix.csv and crates/analysis/tests/parity.rs).
+It is not shipped as a binary asset; `.dat` is a plain-text file. See
+ASSETS.md › "Public-domain datasets allowed as test fixtures".

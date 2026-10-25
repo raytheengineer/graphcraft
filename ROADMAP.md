@@ -39,6 +39,8 @@ for everything after.
 - [x] WASM gate wired in GitHub Actions CI (`.github/workflows/ci.yml`)
 - [x] First CSV importer (`graphcraft_format::import_csv`,
       `graphcraft-cli import <csv> <out>`)
+- [x] First real public-reference parity row (NIST StRD *Lew* mean,
+      certified to 15 digits, passing at 1e-13)
 
 ### M2 — Data tables
 ### M3 — Descriptive + t-tests + 1-way ANOVA + non-parametric
@@ -53,7 +55,7 @@ published reference values, not against Prism.
 
 | Analysis | Reference | Status | Max relative error |
 | --- | --- | --- | --- |
-| _(none yet)_ | | | |
+| mean | NIST StRD *Lew* (univariate, n=200, certified ybar = -177.435000000000) | passing | 1e-13 |
 
 ## Known numerical gaps
 _(none logged yet)_
