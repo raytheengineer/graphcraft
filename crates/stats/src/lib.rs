@@ -11,6 +11,7 @@ pub mod descriptive;
 pub mod distributions;
 pub mod mcomp;
 pub mod nonpar;
+pub mod normality;
 pub mod quadrature;
 pub mod roc;
 pub mod special;
@@ -28,6 +29,7 @@ pub use nonpar::{
     dunns_test, kruskal_wallis, mann_whitney, wilcoxon_signed_rank, DunnPair, KruskalWallis,
     MannWhitney, WilcoxonSignedRank,
 };
+pub use normality::{shapiro_wilk, ShapiroWilk};
 pub use roc::{roc, RocAnalysis};
 pub use survival::{log_rank, LogRank};
 pub use ttest::{

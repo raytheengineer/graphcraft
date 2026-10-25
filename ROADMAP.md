@@ -1,11 +1,16 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M3–M5 complete, M6.1–M6.5 shipped.**
-Statistics, regression, five graph types with SVG+PDF export
-(XY, Column, Grouped, Survival, Heatmap), correlation,
-contingency, ROC, Bland-Altman, two-way ANOVA, log-rank.
-70 numeric parity rows; graphs tested by structural invariants.
-Shapiro-Wilk is the lone open item before M7.
+Status headline (2026-10-25): **M3–M6 complete.** Full statistics
+catalogue through M6 — descriptives, every t-test flavour, 1-way +
+2-way ANOVA with Tukey/Dunnett/Bonferroni/Šidák post-hocs, the
+non-parametric family (MW/Wilcoxon/KW/Dunn), correlation
+(Pearson/Spearman), contingency (χ² and Fisher 2×2), ROC,
+Bland-Altman, log-rank + MH hazard ratio, and Shapiro-Wilk
+normality. Regression up to the LM nonlinear fit with a six-model
+library. Five graph types (XY, Column, Grouped, Survival, Heatmap)
+with hand-written SVG + PDF renderers. 71 numeric parity rows,
+graphs tested by structural invariants. M7 — CLI integration and
+ship-polish — is the final slice before a launchable prototype.
 
 ## Honest assessment (2026-10-25)
 
@@ -176,9 +181,11 @@ for everything after.
       renderers; `None` cells rendered neutral grey. M6 near-
       complete; the only remaining open item on M6 is a dedicated
       normality-tests slice (Shapiro-Wilk via Royston 1992).
-- [ ] M6.6 — Shapiro-Wilk normality test (via Royston 1992
-      polynomial approximation; follow-up because the published
-      coefficient tables are a careful transcription slice)
+- [x] M6.6 — Shapiro-Wilk normality via Royston (1992)
+      polynomial approximation (4 ≤ n ≤ 2000). `shapiro_wilk(xs)`
+      returns `W`, `z`, and upper-tail `p`. Six unit tests plus a
+      parity row against Shapiro & Wilk (1965) Table 2
+      (`W ≈ 0.79`). M6 complete.
 ### M7 — Polish, perf budgets, MCP, web build
 
 ## Parity table
@@ -215,6 +222,7 @@ published reference values, not against Prism.
 | bland-altman | Closed-form bias = 1.2, SD = √0.7 | passing | 1e-13 |
 | two-way-anova | 2×2 factorial, n=2: `SS_A=18, SS_B=72, SS_AB=8, SS_w=8`; `F=9,36,4` | passing | 1e-13 |
 | log-rank | `[1,1]` vs `[2,2]` → `χ²=3`, `O−E=1`, `V=1/3`; identical groups → `χ²=0` | passing | 1e-13 |
+| shapiro-wilk | Shapiro & Wilk (1965) Table 2 → `W ≈ 0.79` | passing | 1e-2 (published 3-sf precision) |
 
 ## Known numerical gaps
 _(none logged yet)_

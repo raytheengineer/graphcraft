@@ -51,6 +51,7 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | Bland-Altman agreement        | `bland_altman`       | — | Closed-form bias and SD |
 | Two-way ANOVA (balanced)      | `two_way_anova`      | — | Hand-computed 2×2 factorial |
 | Log-rank test + Mantel-Haenszel HR | `log_rank`      | `table_log_rank`       | Hand-computed `χ² = 3` |
+| Shapiro-Wilk normality (Royston 1992) | `shapiro_wilk`     | — | Shapiro-Wilk 1965 Table 2 (`W ≈ 0.79`) |
 
 ## Descriptive statistics (M3.0)
 
@@ -706,3 +707,43 @@ Deferred to M6.4+:
 - Weighted / stratified log-rank (Peto-Prentice, Breslow,
   Harrington-Fleming weights).
 - Cox proportional-hazards regression.
+
+## Shapiro-Wilk normality (M6.6)
+
+`graphcraft_stats::normality::shapiro_wilk(xs)` runs Royston's
+1992 polynomial approximation to the Shapiro-Wilk W-test, valid
+for `4 ≤ n ≤ 2000`.
+
+Algorithm (direct transcription of the published equations):
+
+1. Sort `xs` and compute Weisberg-Bingham expected normal order
+   statistics `m_i = Φ⁻¹((i − 3/8) / (n + 1/4))`.
+2. Normalise `c = m / √(mᵀm)`.
+3. Compute Shapiro-Wilk coefficients `a` with Royston's polynomial
+   correction at the two endpoints (small-n path at `n = 4, 5`
+   corrects only the outermost pair), scaled by `ε²` so that
+   `Σ a² = 1`.
+4. `W = (Σ a_i y_(i))² / Σ (y_i − ȳ)²`.
+5. Transform `log(1 − W)` to standard-normal `z` via Royston's
+   small-n (`n ≤ 11`) or large-n coefficients; upper-tail p from
+   `Φ(z)`.
+
+The implementation inherits the ≈ 1.5·10⁻⁷ erf precision floor,
+which flows through `Φ⁻¹` and `Φ` into both `W` and the final p.
+A tighter erf will tighten this test.
+
+Behaviour references (public):
+- Shapiro, S. S. & Wilk, M. B. (1965) *Biometrika* 52, 591–611.
+- Royston, P. (1992) *Statistics and Computing* 2, 117–119.
+- Royston, P. (1995) *Applied Statistics* 44, 547–551.
+
+Parity row (new): Shapiro-Wilk 1965 Table 2 (eleven male body
+weights) → `W ≈ 0.79` to published 3-sig-fig precision, rejecting
+normality at `α = 0.05`.
+
+Deferred to M6.6+:
+- D'Agostino-Pearson K² test (skewness + kurtosis combined).
+- Anderson-Darling.
+- Kolmogorov-Smirnov one-sample test.
+- Tighter `erf` to lift the shared precision floor on normal-
+  distribution derivatives.

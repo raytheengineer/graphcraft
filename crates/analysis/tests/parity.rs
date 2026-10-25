@@ -479,6 +479,16 @@ fn run(row: &Row) -> f64 {
             other => panic!("unknown kruskal-wallis statistic: {other:?}"),
         };
     }
+    if row.analysis == "shapiro-wilk" {
+        let xs = load_dataset(&row.dataset);
+        let r = graphcraft_stats::shapiro_wilk(&xs).unwrap();
+        return match row.statistic.as_str() {
+            "w" => r.w,
+            "z" => r.z,
+            "p" => r.p,
+            other => panic!("unknown shapiro-wilk statistic: {other:?}"),
+        };
+    }
     if row.analysis == "log-rank" {
         let (g1, g2) = load_survival_two_groups(&row.dataset);
         let r = graphcraft_stats::log_rank(&g1, &g2).unwrap();
