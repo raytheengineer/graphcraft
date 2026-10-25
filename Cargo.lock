@@ -20,8 +20,14 @@ dependencies = [
 name = "graphcraft-cli"
 version = "0.0.1"
 dependencies = [
+ "graphcraft_analysis",
  "graphcraft_engine",
  "graphcraft_format",
+ "graphcraft_plot",
+ "graphcraft_regression",
+ "graphcraft_render",
+ "graphcraft_stats",
+ "graphcraft_table",
  "serde_json",
 ]
 

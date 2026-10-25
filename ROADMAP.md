@@ -1,16 +1,10 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M3–M6 complete.** Full statistics
-catalogue through M6 — descriptives, every t-test flavour, 1-way +
-2-way ANOVA with Tukey/Dunnett/Bonferroni/Šidák post-hocs, the
-non-parametric family (MW/Wilcoxon/KW/Dunn), correlation
-(Pearson/Spearman), contingency (χ² and Fisher 2×2), ROC,
-Bland-Altman, log-rank + MH hazard ratio, and Shapiro-Wilk
-normality. Regression up to the LM nonlinear fit with a six-model
-library. Five graph types (XY, Column, Grouped, Survival, Heatmap)
-with hand-written SVG + PDF renderers. 71 numeric parity rows,
-graphs tested by structural invariants. M7 — CLI integration and
-ship-polish — is the final slice before a launchable prototype.
+Status headline (2026-10-25): **M3–M6 complete, M7.1 shipped.**
+Statistics catalogue, regression stack, five graph types with SVG
+and PDF export, and now a usable CLI that drives the whole
+pipeline. 71 numeric parity rows. Perf budgets, MCP, and the web
+build remain for M7.2–M7.4.
 
 ## Honest assessment (2026-10-25)
 
@@ -187,6 +181,16 @@ for everything after.
       parity row against Shapiro & Wilk (1965) Table 2
       (`W ≈ 0.79`). M6 complete.
 ### M7 — Polish, perf budgets, MCP, web build
+- [x] M7.1 — CLI integration. `graphcraft-cli` grows a full
+      analysis + export surface: `describe`, `anova`,
+      `ttest-{unpaired,paired}`, `correlate`, `regress`, `chi2`
+      (CSV → JSON), and `plot {xy,column} <csv> ... <out.svg|.pdf>`
+      (format chosen by extension). Column args accept 0-based
+      index or header-name match. Smoke-tested end-to-end:
+      CSV → JSON, SVG, PDF.
+- [ ] M7.2 — Perf budget harness
+- [ ] M7.3 — MCP (Model Context Protocol) stdio wiring
+- [ ] M7.4 — Web build (WASM engine in a real page)
 
 ## Parity table
 To be filled in as analyses land. Each row grades our output against

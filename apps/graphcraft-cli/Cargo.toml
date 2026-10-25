@@ -9,8 +9,14 @@ authors.workspace = true
 description = "GraphCraft command-line tool."
 
 [dependencies]
+graphcraft_analysis = { path = "../../crates/analysis" }
 graphcraft_engine = { path = "../../crates/engine" }
 graphcraft_format = { path = "../../crates/format" }
+graphcraft_plot = { path = "../../crates/plot" }
+graphcraft_regression = { path = "../../crates/regression" }
+graphcraft_render = { path = "../../crates/render" }
+graphcraft_stats = { path = "../../crates/stats" }
+graphcraft_table = { path = "../../crates/table" }
 serde_json = { workspace = true }
 
 [[bin]]
