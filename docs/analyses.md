@@ -34,6 +34,11 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | Tukey HSD post-hoc            | `tukey_hsd`          | `column_tukey_hsd`     | Verified via q-dist parity |
 | Dunnett distribution (ρ=1/2) | `distributions::dunnett::{dunnett_cdf, dunnett_inv_cdf}` | — | Dunnett (1964) tabled crit values |
 | Dunnett many-to-one post-hoc  | `dunnett`            | `column_dunnett`       | Verified via Dunnett-dist parity |
+| Chi-squared distribution      | `distributions::chi_squared::{chi2_cdf, chi2_sf, chi2_inv_cdf}` | — | `P(χ²₂ ≤ x) = 1 − e^{−x/2}` |
+| Mann-Whitney U                | `mann_whitney`       | `column_mann_whitney`  | Closed form on `[1,2,3]` vs `[4,5,6]` |
+| Wilcoxon signed-rank          | `wilcoxon_signed_rank` | `column_wilcoxon_signed_rank` | Closed form on diffs `[1..5]` |
+| Kruskal-Wallis H              | `kruskal_wallis`     | `column_kruskal_wallis` | Closed form `H=7.2`, `p=e^{−3.6}` |
+| Dunn's post-hoc               | `dunns_test`         | `column_dunns_test`    | Verified via KW mean-rank structure |
 
 ## Descriptive statistics (M3.0)
 
@@ -308,3 +313,67 @@ Deferred to M3.3b+:
 - Full unbalanced Dunnett (Hochberg or Hsu generalisation).
 - Hsu's MCB (multiple comparisons with the best) and other
   Prism-documented post-hocs; scheduled with the remainder of M6.
+
+## Non-parametric tests (M3.4)
+
+### Supporting primitives
+
+- `graphcraft_numeric::ranks_with_ties(&[f64]) -> (Vec<f64>, f64)`:
+  tie-aware midrank function returning the rank vector and the tie
+  correction `Σ(t³ − t)` used across the family.
+- `graphcraft_stats::special::inc_gamma_reg_p` / `inc_gamma_reg_q`:
+  regularized incomplete gamma via Numerical Recipes §6.2 split
+  (series for `x < a + 1`, Lentz CF for the complement).
+- `graphcraft_stats::distributions::chi_squared::{chi2_cdf, chi2_sf,
+  chi2_inv_cdf}`: `P(χ²_k ≤ x) = P(k/2, x/2)`. df is real-valued
+  so this file also serves the fractional-df cases ANOVA and the
+  Kruskal–Wallis tie correction can produce.
+
+### Tests
+
+- `mann_whitney(xs, ys)`: Wilcoxon rank-sum / Mann-Whitney U with
+  tie correction. The U statistic, standardised Z (with 0.5
+  continuity correction toward the null mean), and two-sided
+  large-sample p are returned.
+- `wilcoxon_signed_rank(xs, ys)`: signed-rank test on `ys − xs`
+  against zero. Zero differences are dropped (Wilcoxon's original
+  convention); Pratt's zero-splitting variant is a scheduled option.
+  Tie correction `−T/48` on the variance (Lehmann/Hollander form).
+- `kruskal_wallis(groups)`: k-sample H with tie correction factor
+  `1 − Σ(t³−t)/(N³−N)` applied to the uncorrected H. p from
+  `χ²_{k−1}`.
+- `dunns_test(kw)`: pairwise mean-rank Z tests with Bonferroni
+  family-wise adjustment across `k(k−1)/2` comparisons. The
+  pooled-variance form uses the standard `N(N+1)/12 · (1/n_i + 1/n_j)`
+  without a tie correction (tie-corrected Dunn's is a scheduled option).
+
+Analysis API: `column_mann_whitney`, `column_wilcoxon_signed_rank`,
+`column_kruskal_wallis`, `column_dunns_test` on `ColumnTable`.
+
+Behaviour references (public):
+- Mann, H. B. & Whitney, D. R. (1947) *Annals of Mathematical
+  Statistics* 18, 50–60.
+- Wilcoxon, F. (1945) *Biometrics Bulletin* 1, 80–83.
+- Kruskal, W. H. & Wallis, W. A. (1952) *JASA* 47, 583–621.
+- Dunn, O. J. (1964) *Technometrics* 6, 241–252.
+- Hollander, M., Wolfe, D. A. & Chicken, E. (2014) *Nonparametric
+  Statistical Methods*, 3rd ed., Wiley (used only as a textbook
+  oracle, never for implementation code).
+
+### Parity rows (new)
+
+- `chi2-cdf` closed form `P(χ²₂ ≤ 2) = 1 − e⁻¹ ≈ 0.6321` at 1e-13.
+- `chi2-inv` closed form `χ²₂, p=0.95 → 2·ln(20) ≈ 5.9915` at 1e-10.
+- `mann-whitney` closed form on `[1,2,3]` vs `[4,5,6]`:
+  `U = 0`, `Z = −4/√5.25 ≈ −1.7457` at 1e-13.
+- `wilcoxon-signed-rank` closed form on diffs `[1,2,3,4,5]`:
+  `Z = 7/√13.75 ≈ 1.8878` at 1e-13.
+- `kruskal-wallis` closed form on `[1,2,3]/[4,5,6]/[7,8,9]`:
+  `H = 7.2` at 1e-13 and `p = e⁻³·⁶ ≈ 0.02732` at 1e-12.
+
+### Deferred to M3.4+
+- Exact small-sample permutation enumerations for Mann-Whitney and
+  Wilcoxon.
+- Tie-corrected Dunn's.
+- Pratt zero-handling variant for Wilcoxon.
+- Jonckheere-Terpstra and Friedman — scheduled with M6.

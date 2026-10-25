@@ -164,6 +164,51 @@ fn run(row: &Row) -> f64 {
             other => panic!("unknown two-sample statistic: {other:?}"),
         };
     }
+    if row.analysis == "chi2-cdf" {
+        let p = parse_params(&row.dataset);
+        let x = *p.get("x").expect("chi2-cdf needs x");
+        let df = *p.get("df").expect("chi2-cdf needs df");
+        return graphcraft_stats::distributions::chi_squared::chi2_cdf(x, df).unwrap();
+    }
+    if row.analysis == "chi2-inv" {
+        let p = parse_params(&row.dataset);
+        let pr = *p.get("p").expect("chi2-inv needs p");
+        let df = *p.get("df").expect("chi2-inv needs df");
+        return graphcraft_stats::distributions::chi_squared::chi2_inv_cdf(pr, df).unwrap();
+    }
+    if row.analysis == "mann-whitney" {
+        let (xs, ys) = load_dataset_pair(&row.dataset);
+        let r = graphcraft_stats::mann_whitney(&xs, &ys).unwrap();
+        return match row.statistic.as_str() {
+            "u" => r.u,
+            "z" => r.z,
+            "p" => r.p_two_sided,
+            "r1" => r.r1,
+            other => panic!("unknown mann-whitney statistic: {other:?}"),
+        };
+    }
+    if row.analysis == "wilcoxon-signed-rank" {
+        let (xs, ys) = load_dataset_pair(&row.dataset);
+        let r = graphcraft_stats::wilcoxon_signed_rank(&xs, &ys).unwrap();
+        return match row.statistic.as_str() {
+            "z" => r.z,
+            "p" => r.p_two_sided,
+            "w_plus" => r.w_plus,
+            "w_minus" => r.w_minus,
+            other => panic!("unknown wilcoxon statistic: {other:?}"),
+        };
+    }
+    if row.analysis == "kruskal-wallis" {
+        let groups = load_dataset_groups(&row.dataset);
+        let r = graphcraft_stats::kruskal_wallis(&groups).unwrap();
+        return match row.statistic.as_str() {
+            "h" => r.h,
+            "h_corrected" => r.h_corrected,
+            "p" => r.p,
+            "df" => r.df,
+            other => panic!("unknown kruskal-wallis statistic: {other:?}"),
+        };
+    }
     if row.analysis == "normal-cdf" {
         let p = parse_params(&row.dataset);
         let x = *p.get("x").expect("normal-cdf needs x");

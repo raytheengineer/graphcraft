@@ -5,10 +5,15 @@
 //! - [`inc_beta_reg`] — the regularized incomplete beta function
 //!   `I_x(a, b)`, computed from the Lentz continued-fraction form of
 //!   `B(x; a, b)` with the standard `x > (a+1)/(a+b+2)` swap.
+//! - [`inc_gamma_reg_p`] / [`inc_gamma_reg_q`] — the regularized
+//!   lower and upper incomplete gamma functions `P(a, x)` and
+//!   `Q(a, x)` via the standard series/continued-fraction split at
+//!   `x < a + 1` vs `x ≥ a + 1`.
 //!
 //! Implementation is a direct transcription of the published
-//! algorithms (Lanczos 1964; Numerical Recipes §6.4); no third-party
-//! statistical code is used, and no symbolic Prism material.
+//! algorithms (Lanczos 1964; Numerical Recipes §6.2 and §6.4); no
+//! third-party statistical code is used, and no symbolic Prism
+//! material.
 
 use graphcraft_numeric::NumericError;
 
@@ -127,6 +132,80 @@ fn betacf(a: f64, b: f64, x: f64) -> Result<f64, NumericError> {
     Err(NumericError::NotFinite)
 }
 
+/// Regularized lower incomplete gamma `P(a, x) = γ(a, x) / Γ(a)`.
+///
+/// Numerical Recipes §6.2 split:
+/// - `x < a + 1`: series expansion `P(a, x) = e^{-x} x^a Σ Γ(a)/Γ(a+1+n) x^n / Γ(a)`.
+/// - `x ≥ a + 1`: continued fraction for `Q(a, x) = 1 − P(a, x)`.
+pub fn inc_gamma_reg_p(a: f64, x: f64) -> Result<f64, NumericError> {
+    if !a.is_finite() || !x.is_finite() || a <= 0.0 || x < 0.0 {
+        return Err(NumericError::NotFinite);
+    }
+    if x == 0.0 {
+        return Ok(0.0);
+    }
+    if x < a + 1.0 {
+        gser(a, x)
+    } else {
+        Ok(1.0 - gcf(a, x)?)
+    }
+}
+
+/// Regularized upper incomplete gamma `Q(a, x) = 1 − P(a, x)`.
+pub fn inc_gamma_reg_q(a: f64, x: f64) -> Result<f64, NumericError> {
+    Ok(1.0 - inc_gamma_reg_p(a, x)?)
+}
+
+/// Series form of `P(a, x)` for `x < a + 1`.
+fn gser(a: f64, x: f64) -> Result<f64, NumericError> {
+    const MAX_ITER: usize = 1000;
+    const EPS: f64 = 1e-16;
+    let gln = ln_gamma(a);
+    let mut ap = a;
+    let mut sum = 1.0 / a;
+    let mut del = sum;
+    for _ in 0..MAX_ITER {
+        ap += 1.0;
+        del *= x / ap;
+        sum += del;
+        if del.abs() < sum.abs() * EPS {
+            return Ok(sum * (-x + a * x.ln() - gln).exp());
+        }
+    }
+    Err(NumericError::NotFinite)
+}
+
+/// Lentz continued fraction for `Q(a, x)` when `x ≥ a + 1`.
+fn gcf(a: f64, x: f64) -> Result<f64, NumericError> {
+    const MAX_ITER: usize = 1000;
+    const EPS: f64 = 1e-16;
+    const FPMIN: f64 = 1e-300;
+    let gln = ln_gamma(a);
+    let mut b = x + 1.0 - a;
+    let mut c = 1.0 / FPMIN;
+    let mut d = 1.0 / b;
+    let mut h = d;
+    for n in 1..=MAX_ITER {
+        let an = -(n as f64) * (n as f64 - a);
+        b += 2.0;
+        d = an * d + b;
+        if d.abs() < FPMIN {
+            d = FPMIN;
+        }
+        c = b + an / c;
+        if c.abs() < FPMIN {
+            c = FPMIN;
+        }
+        d = 1.0 / d;
+        let del = d * c;
+        h *= del;
+        if (del - 1.0).abs() < EPS {
+            return Ok((-x + a * x.ln() - gln).exp() * h);
+        }
+    }
+    Err(NumericError::NotFinite)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,6 +235,37 @@ mod tests {
         let ib1 = inc_beta_reg(x, a, b).unwrap();
         let ib2 = inc_beta_reg(1.0 - x, b, a).unwrap();
         assert!((ib1 + ib2 - 1.0).abs() < 1e-13);
+    }
+
+    #[test]
+    fn inc_gamma_closed_forms() {
+        // P(1, x) = 1 − exp(−x) (exponential CDF with λ=1).
+        for x in [0.5_f64, 1.0, 2.5, 7.0] {
+            let got = inc_gamma_reg_p(1.0, x).unwrap();
+            let expected = 1.0 - (-x).exp();
+            assert!(
+                (got - expected).abs() < 1e-13,
+                "P(1,{x})={got} vs {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn inc_gamma_half_matches_erf() {
+        // P(1/2, x) = erf(√x). We don't have double-precision erf
+        // yet (A&S bound ~1.5e-7), so verify P(1/2, 1) ≈ erf(1).
+        let got = inc_gamma_reg_p(0.5, 1.0).unwrap();
+        let expected = 0.842_700_792_949_714_9_f64;
+        assert!((got - expected).abs() < 1e-13);
+    }
+
+    #[test]
+    fn inc_gamma_p_plus_q() {
+        for (a, x) in [(0.5_f64, 1.0), (3.0, 2.0), (10.0, 15.0)] {
+            let p = inc_gamma_reg_p(a, x).unwrap();
+            let q = inc_gamma_reg_q(a, x).unwrap();
+            assert!((p + q - 1.0).abs() < 1e-13);
+        }
     }
 
     #[test]

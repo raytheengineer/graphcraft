@@ -1,13 +1,18 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M1 scaffolding in progress.** Nothing is
-usable yet. The workspace builds, `cargo xtask ci` runs, and one trivial
-command exists end-to-end.
+Status headline (2026-10-25): **M3 complete.** Descriptive statistics,
+all t-test variants, one-way ANOVA + F distribution, Tukey HSD, Dunnett,
+Bonferroni / Šidák, and the non-parametric family (Mann-Whitney, Wilcoxon
+signed-rank, Kruskal-Wallis, Dunn's) are shipped with public-reference
+parity rows at the published tolerances. 29 parity rows live.
 
 ## Honest assessment (2026-10-25)
 
-**Where we stand.** Pre-alpha scaffolding. No analyses, no plots, no file
-format beyond a round-trippable stub.
+**Where we stand.** Statistics layer up through M3 is working: 29 parity
+rows cover descriptives, t-tests, ANOVA + four post-hocs, and
+non-parametric rank tests. Still ahead: regression (M4), graphs and
+export (M5), the rest of the analysis catalogue (M6), and ship polish
+(M7). No file format beyond a round-trippable stub.
 
 **Where we're lacking (the gap list, prioritized).**
 1. Numerical core: special functions (gamma, beta, erf), finite-float
@@ -94,8 +99,13 @@ for everything after.
       two-sided max). `dunnett_cdf` / `dunnett_inv_cdf`; `dunnett`
       post-hoc on OneWayAnova; `column_dunnett` wrapper. Four new
       parity rows (two closed form, two Dunnett 1964 tabled)
-- [ ] M3.4 — Non-parametric: Mann-Whitney, Wilcoxon, Kruskal-Wallis,
-      Dunn's post-hoc
+- [x] M3.4 — Non-parametric: `graphcraft_numeric::ranks_with_ties`;
+      `inc_gamma_reg_p/q`; chi-squared distribution; Mann-Whitney U
+      (`mann_whitney`), Wilcoxon signed-rank (`wilcoxon_signed_rank`),
+      Kruskal-Wallis H (`kruskal_wallis`), Dunn's post-hoc
+      (`dunns_test`); analysis-layer wrappers. Six new closed-form
+      parity rows (chi-squared, Mann-Whitney, Wilcoxon, KW H and p).
+      M3 complete.
 ### M4 — Linear + nonlinear regression (LM + published model library)
 ### M5 — Core graphs (XY, Column, Grouped, Survival) + SVG/PDF export
 ### M6 — Remaining analyses + graph types
@@ -121,6 +131,10 @@ published reference values, not against Prism.
 | studentized-range-cdf | `F(q;2,∞) = 2·Φ(q/√2)−1`; Harter 1960 crit values at (3,∞) and (3,10) | passing | 1e-5 closed / 2e-3 tabled |
 | dunnett-one-sided-cdf | `m=1`: Φ(z); Dunnett 1964 crit value at (m=2, ν=∞) | passing | 1e-5 closed / 2e-3 tabled |
 | dunnett-two-sided-cdf | `m=1`: 2Φ−1; Dunnett 1964 crit value at (m=2, ν=∞) | passing | 1e-5 closed / 2e-3 tabled |
+| chi2-cdf / chi2-inv | `P(χ²₂≤2) = 1−e⁻¹`; `χ²₂, p=0.95 → 2·ln 20` | passing | 1e-13 / 1e-10 |
+| mann-whitney | Closed form `U=0`, `Z=−4/√5.25` on `[1,2,3]` vs `[4,5,6]` | passing | 1e-13 |
+| wilcoxon-signed-rank | Closed form `Z = 7/√13.75` on diffs `[1..5]` | passing | 1e-13 |
+| kruskal-wallis | Closed form `H=7.2`, `p=e⁻³·⁶` on arithmetic groups | passing | 1e-12 |
 
 ## Known numerical gaps
 _(none logged yet)_

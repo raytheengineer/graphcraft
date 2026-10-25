@@ -26,3 +26,10 @@ dunnett-one-sided-cdf,d=1.6448536269514722;m=1;df=inf,p,0.95,1e-5,closed-form:Ph
 dunnett-one-sided-cdf,d=1.916;m=2;df=inf,p,0.95,2e-3,dunnett-1964:d_0.05(2;inf)
 dunnett-two-sided-cdf,d=1.959963984540054;m=1;df=inf,p,0.95,1e-5,closed-form:2*Phi(z_0.975)-1
 dunnett-two-sided-cdf,d=2.212;m=2;df=inf,p,0.95,2e-3,dunnett-1964:d_0.05(2;inf;two-sided)
+chi2-cdf,x=2;df=2,p,0.6321205588285577,1e-13,closed-form:1-exp(-1)
+chi2-inv,p=0.95;df=2,q,5.991464547107982,1e-10,closed-form:2*ln(20)
+mann-whitney,inline2:1;2;3|4;5;6,z,-1.7457431218879391,1e-13,closed-form:(0-4.5+0.5)/sqrt(5.25)
+mann-whitney,inline2:1;2;3|4;5;6,u,0.0,1e-15,closed-form:U=R1-n1(n1+1)/2
+wilcoxon-signed-rank,inline2:0;0;0;0;0|1;2;3;4;5,z,1.8877596148970779,1e-13,closed-form:(15-7.5-0.5)/sqrt(13.75)
+kruskal-wallis,inline-groups:1;2;3||4;5;6||7;8;9,h,7.2,1e-13,closed-form:(12/90)*(36/3+225/3+576/3)-30
+kruskal-wallis,inline-groups:1;2;3||4;5;6||7;8;9,p,0.02732372244729256,1e-12,closed-form:exp(-3.6)

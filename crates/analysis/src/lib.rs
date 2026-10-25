@@ -8,8 +8,10 @@
 
 use graphcraft_numeric::NumericError;
 use graphcraft_stats::{
-    dunnett, one_sample_t, one_way_anova, paired_t, tukey_hsd, unpaired_t, Descriptives,
-    DunnettSide, OneSampleT, OneWayAnova, PairedT, PairwiseComparison, TwoSampleKind, TwoSampleT,
+    dunnett, dunns_test, kruskal_wallis, mann_whitney, one_sample_t, one_way_anova, paired_t,
+    tukey_hsd, unpaired_t, wilcoxon_signed_rank, Descriptives, DunnPair, DunnettSide,
+    KruskalWallis, MannWhitney, OneSampleT, OneWayAnova, PairedT, PairwiseComparison,
+    TwoSampleKind, TwoSampleT, WilcoxonSignedRank,
 };
 use graphcraft_table::ColumnTable;
 
@@ -142,6 +144,68 @@ pub fn column_dunnett(
 pub fn column_tukey_hsd(table: &ColumnTable) -> Result<Vec<PairwiseComparison>, NumericError> {
     let anova = column_one_way_anova(table)?;
     tukey_hsd(&anova)
+}
+
+/// Mann-Whitney U on two Column-table columns by index.
+pub fn column_mann_whitney(
+    table: &ColumnTable,
+    col_a: usize,
+    col_b: usize,
+) -> Result<MannWhitney, NumericError> {
+    if col_a >= table.columns.len() || col_b >= table.columns.len() {
+        return Err(NumericError::TooFewValues {
+            required: col_a.max(col_b) + 1,
+            got: table.columns.len(),
+        });
+    }
+    let xs: Vec<f64> = table.group_values(col_a).collect();
+    let ys: Vec<f64> = table.group_values(col_b).collect();
+    mann_whitney(&xs, &ys)
+}
+
+/// Wilcoxon signed-rank on two Column-table columns, pairing by row
+/// index and dropping rows where either column is missing.
+pub fn column_wilcoxon_signed_rank(
+    table: &ColumnTable,
+    col_a: usize,
+    col_b: usize,
+) -> Result<WilcoxonSignedRank, NumericError> {
+    if col_a >= table.columns.len() || col_b >= table.columns.len() {
+        return Err(NumericError::TooFewValues {
+            required: col_a.max(col_b) + 1,
+            got: table.columns.len(),
+        });
+    }
+    let a = &table.columns[col_a].values;
+    let b = &table.columns[col_b].values;
+    let rows = a.len().min(b.len());
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+    for i in 0..rows {
+        if let (Some(x), Some(y)) = (a[i], b[i]) {
+            xs.push(x);
+            ys.push(y);
+        }
+    }
+    wilcoxon_signed_rank(&xs, &ys)
+}
+
+/// Kruskal-Wallis across all non-empty columns of a Column table.
+pub fn column_kruskal_wallis(table: &ColumnTable) -> Result<KruskalWallis, NumericError> {
+    let mut groups: Vec<Vec<f64>> = Vec::new();
+    for (i, _) in table.columns.iter().enumerate() {
+        let g: Vec<f64> = table.group_values(i).collect();
+        if !g.is_empty() {
+            groups.push(g);
+        }
+    }
+    kruskal_wallis(&groups)
+}
+
+/// Dunn's post-hoc on top of a Kruskal-Wallis of a Column table.
+pub fn column_dunns_test(table: &ColumnTable) -> Result<Vec<DunnPair>, NumericError> {
+    let kw = column_kruskal_wallis(table)?;
+    dunns_test(&kw)
 }
 
 /// Descriptive statistics for one group (one column) of a Column
