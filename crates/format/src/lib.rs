@@ -381,15 +381,40 @@ pub struct LegendRegistry {
     pub entries: Vec<LegendEntry>,
 }
 
-/// One entry in the shared legend. Only the fields that are
-/// visible in a plot today — name and colour — are plumbed; the
-/// marker-shape and line-width fields on the ambition list come
-/// in M9.8+.
+/// One entry in the shared legend. Carries the shared appearance
+/// for a key: display name, colour, marker shape + size, and the
+/// line width used by line / censor-tick series.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LegendEntry {
     pub key: String,
     pub display_name: String,
     pub color: LegendColor,
+    #[serde(default)]
+    pub marker: LegendMarker,
+    #[serde(default = "default_marker_size_pt")]
+    pub marker_size_pt: f64,
+    #[serde(default = "default_line_width_pt")]
+    pub line_width_pt: f64,
+}
+
+fn default_marker_size_pt() -> f64 {
+    4.0
+}
+fn default_line_width_pt() -> f64 {
+    1.5
+}
+
+/// Marker shape stored on a legend entry. A separate enum from
+/// `plot::Marker` so format stays plot-free; the analysis-layer
+/// legend-apply pass maps between them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum LegendMarker {
+    #[default]
+    Circle,
+    Square,
+    Triangle,
+    None,
 }
 
 /// RGB legend colour (0–255 per channel). Serialises as a flat
@@ -445,6 +470,9 @@ impl LegendRegistry {
                 key: key.clone(),
                 display_name: key,
                 color,
+                marker: LegendMarker::default(),
+                marker_size_pt: default_marker_size_pt(),
+                line_width_pt: default_line_width_pt(),
             });
             added += 1;
         }

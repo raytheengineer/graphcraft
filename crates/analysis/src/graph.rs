@@ -7,13 +7,13 @@
 //! [`add_graph_sheet`] just records the binding.
 
 use graphcraft_format::{
-    source_hash, GraphColormap, GraphErrorBars, GraphSpec, LegendRegistry, Project, Sheet,
-    SheetBody, SheetId,
+    source_hash, GraphColormap, GraphErrorBars, GraphSpec, LegendMarker, LegendRegistry, Project,
+    Sheet, SheetBody, SheetId,
 };
 use graphcraft_numeric::NumericError;
 use graphcraft_plot::{
     column_scene, heatmap_scene, xy_scene_from_points, Color, Colormap, ColumnErrorBars,
-    ColumnOptions, HeatmapData, HeatmapOptions, Scene, Series, XyOptions,
+    ColumnOptions, HeatmapData, HeatmapOptions, Marker, Scene, Series, XyOptions,
 };
 use graphcraft_table::{AnyTable, ColumnTable};
 
@@ -84,11 +84,14 @@ pub fn apply_legend(scene: &mut Scene, registry: &LegendRegistry) {
             Series::Scatter { label, marker, .. } => {
                 if let Some(e) = registry.get(label) {
                     marker.fill = Color(e.color.0, e.color.1, e.color.2);
+                    marker.shape = marker_from_legend(e.marker);
+                    marker.size_pt = e.marker_size_pt;
                 }
             }
             Series::Line { label, style, .. } => {
                 if let Some(e) = registry.get(label) {
                     style.stroke = Color(e.color.0, e.color.1, e.color.2);
+                    style.width_pt = e.line_width_pt;
                 }
             }
             Series::Bars { bars, .. } => {
@@ -96,7 +99,8 @@ pub fn apply_legend(scene: &mut Scene, registry: &LegendRegistry) {
                 // and its own optional `color`. Look each one up
                 // in the registry and override the per-bar fill;
                 // a miss leaves `None` so the shared series fill
-                // continues to apply.
+                // continues to apply. Marker shape / size doesn't
+                // apply to rectangular bars.
                 for b in bars.iter_mut() {
                     if let Some(e) = registry.get(&b.label) {
                         b.color = Some(Color(e.color.0, e.color.1, e.color.2));
@@ -111,6 +115,7 @@ pub fn apply_legend(scene: &mut Scene, registry: &LegendRegistry) {
             Series::CensorTicks { label, style, .. } => {
                 if let Some(e) = registry.get(label) {
                     style.stroke = Color(e.color.0, e.color.1, e.color.2);
+                    style.width_pt = e.line_width_pt;
                 }
             }
             Series::Heatmap { .. } => {
@@ -118,6 +123,15 @@ pub fn apply_legend(scene: &mut Scene, registry: &LegendRegistry) {
                 // override (M10+).
             }
         }
+    }
+}
+
+fn marker_from_legend(m: LegendMarker) -> Marker {
+    match m {
+        LegendMarker::Circle => Marker::Circle,
+        LegendMarker::Square => Marker::Square,
+        LegendMarker::Triangle => Marker::Triangle,
+        LegendMarker::None => Marker::None,
     }
 }
 

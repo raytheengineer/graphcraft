@@ -430,6 +430,7 @@ impl AppState {
     }
 
     fn render_legend_entries(&mut self, ui: &mut Ui) {
+        use graphcraft_format::LegendMarker;
         let n = self.project.legend_registry.entries.len();
         if n == 0 {
             ui.label(
@@ -456,10 +457,52 @@ impl AppState {
                 }
                 ui.add(
                     TextEdit::singleline(&mut entry.display_name)
-                        .desired_width(140.0)
+                        .desired_width(120.0)
                         .hint_text(&entry.key),
                 );
             });
+            ui.horizontal(|ui| {
+                ui.add_space(16.0);
+                ui.label(RichText::new("marker").weak().small());
+                ComboBox::from_id_salt(("legend-marker", i))
+                    .selected_text(marker_glyph(entry.marker))
+                    .width(44.0)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut entry.marker,
+                            LegendMarker::Circle,
+                            marker_glyph(LegendMarker::Circle),
+                        );
+                        ui.selectable_value(
+                            &mut entry.marker,
+                            LegendMarker::Square,
+                            marker_glyph(LegendMarker::Square),
+                        );
+                        ui.selectable_value(
+                            &mut entry.marker,
+                            LegendMarker::Triangle,
+                            marker_glyph(LegendMarker::Triangle),
+                        );
+                        ui.selectable_value(
+                            &mut entry.marker,
+                            LegendMarker::None,
+                            marker_glyph(LegendMarker::None),
+                        );
+                    });
+                ui.label(RichText::new("size").weak().small());
+                ui.add(
+                    egui::DragValue::new(&mut entry.marker_size_pt)
+                        .range(0.0..=24.0)
+                        .speed(0.1),
+                );
+                ui.label(RichText::new("line").weak().small());
+                ui.add(
+                    egui::DragValue::new(&mut entry.line_width_pt)
+                        .range(0.0..=8.0)
+                        .speed(0.05),
+                );
+            });
+            ui.separator();
         }
     }
 
@@ -1578,6 +1621,16 @@ fn colormap_label(c: GraphColormap) -> &'static str {
         GraphColormap::DivergingBlueRed => "Blue → red",
         GraphColormap::Grayscale => "Grayscale",
         GraphColormap::SequentialBlue => "Sequential blue",
+    }
+}
+
+fn marker_glyph(m: graphcraft_format::LegendMarker) -> &'static str {
+    use graphcraft_format::LegendMarker as L;
+    match m {
+        L::Circle => "● circle",
+        L::Square => "■ square",
+        L::Triangle => "▲ triangle",
+        L::None => "— none",
     }
 }
 
