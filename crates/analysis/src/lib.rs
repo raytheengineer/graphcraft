@@ -7,13 +7,14 @@
 //! Column table.
 
 use graphcraft_numeric::NumericError;
+use graphcraft_regression::{simple_linear_regression, OlsFit};
 use graphcraft_stats::{
     dunnett, dunns_test, kruskal_wallis, mann_whitney, one_sample_t, one_way_anova, paired_t,
     tukey_hsd, unpaired_t, wilcoxon_signed_rank, Descriptives, DunnPair, DunnettSide,
     KruskalWallis, MannWhitney, OneSampleT, OneWayAnova, PairedT, PairwiseComparison,
     TwoSampleKind, TwoSampleT, WilcoxonSignedRank,
 };
-use graphcraft_table::ColumnTable;
+use graphcraft_table::{ColumnTable, XyTable};
 
 /// Per-group one-sample t-test result on a Column table.
 #[derive(Debug, Clone)]
@@ -144,6 +145,62 @@ pub fn column_dunnett(
 pub fn column_tukey_hsd(table: &ColumnTable) -> Result<Vec<PairwiseComparison>, NumericError> {
     let anova = column_one_way_anova(table)?;
     tukey_hsd(&anova)
+}
+
+/// Simple linear regression on dataset `dataset_idx` of an
+/// `XyTable`, using the first subcolumn of that dataset as y and the
+/// shared x column. Rows where either x or y is missing are dropped.
+pub fn xy_simple_regression(table: &XyTable, dataset_idx: usize) -> Result<OlsFit, NumericError> {
+    if dataset_idx >= table.datasets.len() {
+        return Err(NumericError::TooFewValues {
+            required: dataset_idx + 1,
+            got: table.datasets.len(),
+        });
+    }
+    let ds = &table.datasets[dataset_idx];
+    if ds.subcolumns.is_empty() {
+        return Err(NumericError::TooFewValues {
+            required: 1,
+            got: 0,
+        });
+    }
+    let ys_sub = &ds.subcolumns[0].values;
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+    for (xi, yi) in table.x.iter().zip(ys_sub.iter()) {
+        if let (Some(x), Some(y)) = (xi, yi) {
+            xs.push(*x);
+            ys.push(*y);
+        }
+    }
+    simple_linear_regression(&xs, &ys)
+}
+
+/// Simple linear regression on two columns of a `ColumnTable`,
+/// pairing by row index. `x_col` is the predictor; `y_col` is the
+/// response. Rows missing either value are dropped.
+pub fn column_simple_regression(
+    table: &ColumnTable,
+    x_col: usize,
+    y_col: usize,
+) -> Result<OlsFit, NumericError> {
+    if x_col >= table.columns.len() || y_col >= table.columns.len() {
+        return Err(NumericError::TooFewValues {
+            required: x_col.max(y_col) + 1,
+            got: table.columns.len(),
+        });
+    }
+    let a = &table.columns[x_col].values;
+    let b = &table.columns[y_col].values;
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+    for (ai, bi) in a.iter().zip(b.iter()) {
+        if let (Some(x), Some(y)) = (ai, bi) {
+            xs.push(*x);
+            ys.push(*y);
+        }
+    }
+    simple_linear_regression(&xs, &ys)
 }
 
 /// Mann-Whitney U on two Column-table columns by index.

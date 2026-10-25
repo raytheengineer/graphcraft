@@ -39,6 +39,7 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | Wilcoxon signed-rank          | `wilcoxon_signed_rank` | `column_wilcoxon_signed_rank` | Closed form on diffs `[1..5]` |
 | Kruskal-Wallis H              | `kruskal_wallis`     | `column_kruskal_wallis` | Closed form `H=7.2`, `p=e^{−3.6}` |
 | Dunn's post-hoc               | `dunns_test`         | `column_dunns_test`    | Verified via KW mean-rank structure |
+| Linear regression (OLS)       | `graphcraft_regression::{ols_fit, simple_linear_regression}` | `xy_simple_regression`, `column_simple_regression` | NIST StRD *Norris* at 1e-11 |
 
 ## Descriptive statistics (M3.0)
 
@@ -377,3 +378,53 @@ Behaviour references (public):
 - Tie-corrected Dunn's.
 - Pratt zero-handling variant for Wilcoxon.
 - Jonckheere-Terpstra and Friedman — scheduled with M6.
+
+## Linear regression — OLS (M4.1)
+
+`graphcraft_regression::ols_fit(x, y, has_intercept)` solves
+`y = X β + ε` via the normal equations with Cholesky, and returns:
+
+- Coefficient estimates `β̂`.
+- Fitted values and residuals.
+- Standard errors `SE(β̂_j) = σ̂ · √[(XᵀX)⁻¹_{jj}]`, t-statistics,
+  two-sided p-values.
+- `RSS`, `TSS` (about the mean for intercept models, about zero
+  otherwise), `R²`, adjusted `R²`.
+- Residual standard error `σ̂ = √(RSS / (n − p))`.
+- Overall-F statistic with its numerator / denominator df and the
+  right-tailed F p-value.
+
+Normal-equations are numerically fine for the well-conditioned
+parity targets (NIST StRD *Norris*). An ill-conditioned dataset
+(e.g. NIST *Longley*) will eventually need a Householder-QR path;
+that is a scheduled upgrade when the first such parity row demands
+it, tracked in `ROADMAP.md`.
+
+`graphcraft_regression::simple_linear_regression(xs, ys)` builds
+`X = [1 | x]` and calls `ols_fit` with `has_intercept = true`.
+
+Analysis API:
+- `xy_simple_regression(table, dataset_idx)` runs on an `XyTable`
+  dataset's first subcolumn against the shared x, dropping rows
+  missing either value.
+- `column_simple_regression(table, x_col, y_col)` runs on two
+  columns of a `ColumnTable`.
+
+Behaviour references (public):
+- Draper, N. R. & Smith, H. (1998) *Applied Regression Analysis*,
+  3rd ed., Wiley.
+- Golub, G. H. & Van Loan, C. F. (2013) *Matrix Computations*,
+  4th ed., §4.2 (Cholesky).
+
+Parity rows (new):
+- NIST StRD *Norris* (36 observations, ozone-monitor calibration;
+  public domain). Six rows against the certified values at
+  tolerance 1e-11 or tighter: `B0`, `B1`, their standard errors,
+  R-squared, and the residual standard deviation.
+
+Deferred to M4.1+:
+- QR path for ill-conditioned designs.
+- Weighted least squares.
+- Confidence intervals and prediction bands.
+- Regression diagnostics (leverage, Cook's distance, Studentized
+  residuals).

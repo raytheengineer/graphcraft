@@ -33,3 +33,9 @@ mann-whitney,inline2:1;2;3|4;5;6,u,0.0,1e-15,closed-form:U=R1-n1(n1+1)/2
 wilcoxon-signed-rank,inline2:0;0;0;0;0|1;2;3;4;5,z,1.8877596148970779,1e-13,closed-form:(15-7.5-0.5)/sqrt(13.75)
 kruskal-wallis,inline-groups:1;2;3||4;5;6||7;8;9,h,7.2,1e-13,closed-form:(12/90)*(36/3+225/3+576/3)-30
 kruskal-wallis,inline-groups:1;2;3||4;5;6||7;8;9,p,0.02732372244729256,1e-12,closed-form:exp(-3.6)
+simple-linear-regression,nist-regr:tests/data/nist/Norris.dat,b0,-0.262323073774029,1e-11,https://itl.nist.gov/div898/strd/lls/data/Norris.shtml
+simple-linear-regression,nist-regr:tests/data/nist/Norris.dat,b1,1.00211681802045,1e-13,https://itl.nist.gov/div898/strd/lls/data/Norris.shtml
+simple-linear-regression,nist-regr:tests/data/nist/Norris.dat,se_b0,0.232818234301152,1e-11,https://itl.nist.gov/div898/strd/lls/data/Norris.shtml
+simple-linear-regression,nist-regr:tests/data/nist/Norris.dat,se_b1,0.429796848199937e-3,1e-11,https://itl.nist.gov/div898/strd/lls/data/Norris.shtml
+simple-linear-regression,nist-regr:tests/data/nist/Norris.dat,r_squared,0.999993745883712,1e-13,https://itl.nist.gov/div898/strd/lls/data/Norris.shtml
+simple-linear-regression,nist-regr:tests/data/nist/Norris.dat,residual_se,0.884796396144373,1e-11,https://itl.nist.gov/div898/strd/lls/data/Norris.shtml

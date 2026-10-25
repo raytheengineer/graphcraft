@@ -95,6 +95,45 @@ fn load_dataset(spec: &str) -> Vec<f64> {
     panic!("unsupported dataset spec: {spec}");
 }
 
+fn load_regression_pair(spec: &str) -> (Vec<f64>, Vec<f64>) {
+    // NIST StRD regression (y, x) pairs:  nist-regr:tests/data/nist/Norris.dat
+    //
+    // The LLS .dat files declare the data block in the header as
+    // "Data: y x". The data begins after a dashed separator, with one
+    // whitespace-delimited (y, x) pair per non-blank line.
+    if let Some(relative) = spec.strip_prefix("nist-regr:") {
+        let path = workspace_root().join(relative);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let mut xs = Vec::new();
+        let mut ys = Vec::new();
+        let mut in_data = false;
+        for line in text.lines() {
+            let t = line.trim();
+            if !in_data {
+                if t.starts_with("Data:") && t.contains('y') && t.contains('x') {
+                    in_data = true;
+                }
+                continue;
+            }
+            if t.is_empty() {
+                continue;
+            }
+            let parts: Vec<&str> = t.split_whitespace().collect();
+            if parts.len() < 2 {
+                continue;
+            }
+            let y: f64 = parts[0].parse().unwrap_or_else(|_| panic!("bad y: {t}"));
+            let x: f64 = parts[1].parse().unwrap_or_else(|_| panic!("bad x: {t}"));
+            xs.push(x);
+            ys.push(y);
+        }
+        assert!(in_data, "no `Data: y x` marker in {}", path.display());
+        return (xs, ys);
+    }
+    panic!("unsupported regression dataset: {spec}");
+}
+
 fn load_dataset_pair(spec: &str) -> (Vec<f64>, Vec<f64>) {
     // `inline2:a1;a2;...|b1;b2;...` — two inline sequences.
     let payload = spec
@@ -162,6 +201,20 @@ fn run(row: &Row) -> f64 {
             "mean_diff" => r.mean_diff,
             "p" => r.p_two_sided,
             other => panic!("unknown two-sample statistic: {other:?}"),
+        };
+    }
+    if row.analysis == "simple-linear-regression" {
+        let (xs, ys) = load_regression_pair(&row.dataset);
+        let r = graphcraft_regression::simple_linear_regression(&xs, &ys).unwrap();
+        return match row.statistic.as_str() {
+            "b0" => r.coefficients[0],
+            "b1" => r.coefficients[1],
+            "se_b0" => r.se[0],
+            "se_b1" => r.se[1],
+            "r_squared" => r.r_squared,
+            "residual_se" => r.residual_se,
+            "f_stat" => r.f_stat,
+            other => panic!("unknown simple-linear-regression statistic: {other:?}"),
         };
     }
     if row.analysis == "chi2-cdf" {

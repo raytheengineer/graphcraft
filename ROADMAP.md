@@ -1,10 +1,8 @@
 # GraphCraft Roadmap
 
-Status headline (2026-10-25): **M3 complete.** Descriptive statistics,
-all t-test variants, one-way ANOVA + F distribution, Tukey HSD, Dunnett,
-Bonferroni / Šidák, and the non-parametric family (Mann-Whitney, Wilcoxon
-signed-rank, Kruskal-Wallis, Dunn's) are shipped with public-reference
-parity rows at the published tolerances. 29 parity rows live.
+Status headline (2026-10-25): **M3 complete, M4.1 shipped.** Statistics
+through M3 plus linear OLS regression with NIST StRD *Norris* parity.
+35 parity rows live.
 
 ## Honest assessment (2026-10-25)
 
@@ -107,6 +105,15 @@ for everything after.
       parity rows (chi-squared, Mann-Whitney, Wilcoxon, KW H and p).
       M3 complete.
 ### M4 — Linear + nonlinear regression (LM + published model library)
+- [x] M4.1 — Linear OLS via Cholesky-normal-equations. Dense-matrix
+      primitives (`DenseMatrix`, `cholesky`, `solve_spd`, `invert_spd`).
+      Full OlsFit output (coefficients, SEs, t, p, R², adj R², residual
+      SE, overall F). `simple_linear_regression` and `ols_fit`.
+      Analysis wrappers `xy_simple_regression`, `column_simple_regression`.
+      NIST StRD *Norris* parity: 6 rows at 1e-11 or tighter.
+- [ ] M4.2 — Levenberg-Marquardt nonlinear fitting
+- [ ] M4.3 — Published model library (one-site binding, Hill /
+      dose-response, Michaelis-Menten, exponential decay, …)
 ### M5 — Core graphs (XY, Column, Grouped, Survival) + SVG/PDF export
 ### M6 — Remaining analyses + graph types
 ### M7 — Polish, perf budgets, MCP, web build
@@ -135,6 +142,7 @@ published reference values, not against Prism.
 | mann-whitney | Closed form `U=0`, `Z=−4/√5.25` on `[1,2,3]` vs `[4,5,6]` | passing | 1e-13 |
 | wilcoxon-signed-rank | Closed form `Z = 7/√13.75` on diffs `[1..5]` | passing | 1e-13 |
 | kruskal-wallis | Closed form `H=7.2`, `p=e⁻³·⁶` on arithmetic groups | passing | 1e-12 |
+| simple-linear-regression | NIST StRD *Norris* (B0, B1, SE B0, SE B1, R², residual SD) | passing | 1e-11 |
 
 ## Known numerical gaps
 _(none logged yet)_

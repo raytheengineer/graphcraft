@@ -1,0 +1,16 @@
+Source:    NIST StRD Linear Least Squares Regression
+URL:       https://itl.nist.gov/div898/strd/lls/data/Norris.shtml
+File URL:  https://itl.nist.gov/div898/strd/lls/data/LINKS/DATA/Norris.dat
+Dataset:   Norris (ozone-monitor calibration)
+License:   U.S. Government work — public domain
+           (NIST StRD, https://www.nist.gov/privacy)
+Format:    Fixed-column text; data begins after the dashed separator
+           on line 60. One (y, x) pair per non-blank line.
+Observations: 36
+Model:     Linear, 2 parameters (B0, B1), y = B0 + B1*x + e
+Certified values used in `tests/parity-matrix.csv`:
+    B0          = -0.262323073774029
+    B1          =  1.00211681802045
+    Residual SD =  0.884796396144373
+    R-squared   =  0.999993745883712
+sha256:    5ab6906c68a9c4b2eb1661c0cd7d2a09f5a469a6d4e05b6b691f190f5f7b944f
