@@ -13,6 +13,8 @@
 
 use graphcraft_numeric::{kahan_sum, require_finite, NumericError};
 
+use crate::distributions::t::t_inv_cdf;
+
 /// A one-pass bundle of descriptive statistics on a non-empty slice
 /// of finite `f64`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -84,6 +86,23 @@ impl Descriptives {
     pub fn range(&self) -> f64 {
         self.max - self.min
     }
+
+    /// Two-sided `(1 − α)` confidence interval of the mean, using the
+    /// Student-t distribution with `n − 1` degrees of freedom.
+    /// `None` when `n < 2` (no SEM) or when `alpha` isn't a usable
+    /// probability.
+    pub fn ci_mean(&self, alpha: f64) -> Option<(f64, f64)> {
+        if !alpha.is_finite() || alpha <= 0.0 || alpha >= 1.0 {
+            return None;
+        }
+        let sem = self.sem?;
+        let df = (self.n.checked_sub(1)? as f64).max(0.0);
+        if df <= 0.0 {
+            return None;
+        }
+        let t_crit = t_inv_cdf(1.0 - alpha / 2.0, df).ok()?;
+        Some((self.mean - t_crit * sem, self.mean + t_crit * sem))
+    }
 }
 
 fn median_of_sorted(sorted: &[f64]) -> f64 {
@@ -154,5 +173,34 @@ mod tests {
             Descriptives::of(&[1.0, f64::NAN, 3.0]),
             Err(NumericError::NotFinite)
         ));
+    }
+
+    #[test]
+    fn ci_mean_contains_mean() {
+        let d = Descriptives::of(&[1.0, 2.0, 3.0, 4.0, 5.0]).unwrap();
+        let (lo, hi) = d.ci_mean(0.05).unwrap();
+        assert!(lo < d.mean && d.mean < hi);
+    }
+
+    #[test]
+    fn ci_mean_tight_vs_wide() {
+        let d = Descriptives::of(&[1.0, 2.0, 3.0, 4.0, 5.0]).unwrap();
+        let (lo95, hi95) = d.ci_mean(0.05).unwrap();
+        let (lo99, hi99) = d.ci_mean(0.01).unwrap();
+        assert!(hi99 - lo99 > hi95 - lo95);
+    }
+
+    #[test]
+    fn ci_mean_single_value_none() {
+        let d = Descriptives::of(&[7.0]).unwrap();
+        assert_eq!(d.ci_mean(0.05), None);
+    }
+
+    #[test]
+    fn ci_mean_bad_alpha_none() {
+        let d = Descriptives::of(&[1.0, 2.0, 3.0]).unwrap();
+        assert_eq!(d.ci_mean(0.0), None);
+        assert_eq!(d.ci_mean(1.0), None);
+        assert_eq!(d.ci_mean(f64::NAN), None);
     }
 }

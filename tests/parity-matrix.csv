@@ -3,3 +3,4 @@ mean,inline:1;2;3;4;5,mean,3.0,1e-15,textbook:arithmetic-mean
 sum,inline:1;2;3;4;5,sum,15.0,1e-15,textbook:arithmetic-sum
 mean,nist-univar:tests/data/nist/Lew.dat,mean,-177.435000000000,1e-13,https://itl.nist.gov/div898/strd/univ/lew.html
 descriptives,nist-univar:tests/data/nist/Lew.dat,sd,277.332168044316,1e-13,https://itl.nist.gov/div898/strd/univ/lew.html
+t-quantile,df=1;p=0.975,qt,12.706204736432095,1e-10,https://en.wikipedia.org/wiki/Student%27s_t-distribution

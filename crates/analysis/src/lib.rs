@@ -7,8 +7,36 @@
 //! Column table.
 
 use graphcraft_numeric::NumericError;
-use graphcraft_stats::Descriptives;
+use graphcraft_stats::{one_sample_t, Descriptives, OneSampleT};
 use graphcraft_table::ColumnTable;
+
+/// Per-group one-sample t-test result on a Column table.
+#[derive(Debug, Clone)]
+pub struct ColumnOneSampleT {
+    pub group_title: String,
+    pub test: OneSampleT,
+}
+
+/// Run a one-sample t-test on every non-empty group of a Column
+/// table against the same null `μ₀`.
+pub fn column_one_sample_t(
+    table: &ColumnTable,
+    mu0: f64,
+) -> Result<Vec<ColumnOneSampleT>, NumericError> {
+    let mut out = Vec::new();
+    for (i, col) in table.columns.iter().enumerate() {
+        let xs: Vec<f64> = table.group_values(i).collect();
+        if xs.is_empty() {
+            continue;
+        }
+        let test = one_sample_t(&xs, mu0)?;
+        out.push(ColumnOneSampleT {
+            group_title: col.title.clone(),
+            test,
+        });
+    }
+    Ok(out)
+}
 
 /// Descriptive statistics for one group (one column) of a Column
 /// table.

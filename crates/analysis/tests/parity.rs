@@ -95,7 +95,28 @@ fn load_dataset(spec: &str) -> Vec<f64> {
     panic!("unsupported dataset spec: {spec}");
 }
 
+fn parse_params(spec: &str) -> std::collections::BTreeMap<String, f64> {
+    let mut out = std::collections::BTreeMap::new();
+    for pair in spec.split(';') {
+        if let Some((k, v)) = pair.split_once('=') {
+            let v: f64 = v
+                .parse()
+                .unwrap_or_else(|_| panic!("param {k:?} is not f64: {v:?}"));
+            out.insert(k.to_string(), v);
+        }
+    }
+    out
+}
+
 fn run(row: &Row) -> f64 {
+    // Analyses that take parameter maps rather than a dataset slice.
+    if row.analysis == "t-quantile" {
+        let p = parse_params(&row.dataset);
+        let df = *p.get("df").expect("t-quantile needs df");
+        let pr = *p.get("p").expect("t-quantile needs p");
+        return graphcraft_stats::distributions::t::t_inv_cdf(pr, df).unwrap();
+    }
+
     let xs = load_dataset(&row.dataset);
     match (row.analysis.as_str(), row.statistic.as_str()) {
         ("mean", "mean") => graphcraft_numeric::mean(&xs).unwrap(),
