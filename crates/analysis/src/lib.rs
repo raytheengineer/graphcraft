@@ -8,7 +8,10 @@
 pub mod graph;
 pub mod layout;
 pub mod project;
-pub use graph::{add_graph_sheet, build_graph_scene, recompute_graph_sheet, GraphError};
+pub use graph::{
+    add_graph_sheet, apply_legend, build_graph_scene, build_graph_scene_in_project,
+    recompute_graph_sheet, GraphError,
+};
 pub use layout::{build_layout_svg, LayoutError};
 pub use project::{add_analysis_sheet, recompute_analysis_sheet, run_analysis, AnalysisError};
 

@@ -139,6 +139,69 @@ fn default_text_size() -> f64 {
     11.0
 }
 
+/// Walk a table and append every candidate legend key (column
+/// title, group label, Y-dataset label, …) to `out`. Empty
+/// strings are skipped so a placeholder header doesn't ghost into
+/// the legend.
+fn collect_keys_from_table(table: &AnyTable, out: &mut Vec<String>) {
+    let push = |out: &mut Vec<String>, s: &str| {
+        if !s.is_empty() {
+            out.push(s.to_string());
+        }
+    };
+    match table {
+        AnyTable::Column(t) => {
+            for c in &t.columns {
+                push(out, &c.title);
+            }
+        }
+        AnyTable::Xy(t) => {
+            for ds in &t.datasets {
+                push(out, &ds.title);
+            }
+        }
+        AnyTable::Grouped(t) => {
+            for g in &t.groups {
+                push(out, &g.title);
+                for sc in &g.subcolumns {
+                    push(out, &sc.title);
+                }
+            }
+        }
+        AnyTable::Contingency(t) => {
+            for s in &t.row_titles {
+                push(out, s);
+            }
+            for s in &t.column_titles {
+                push(out, s);
+            }
+        }
+        AnyTable::Survival(t) => {
+            for g in &t.groups {
+                push(out, &g.title);
+            }
+        }
+        AnyTable::PartsOfWhole(t) => {
+            for slice in &t.slices {
+                push(out, &slice.label);
+            }
+        }
+        AnyTable::MultipleVariables(t) => {
+            for c in &t.columns {
+                push(out, &c.title);
+            }
+        }
+        AnyTable::Nested(t) => {
+            for g in &t.groups {
+                push(out, &g.title);
+                for s in &g.subjects {
+                    push(out, &s.title);
+                }
+            }
+        }
+    }
+}
+
 /// Which graph to build from a data sheet.
 ///
 /// Column references are strings interpreted at run time as either
@@ -299,6 +362,94 @@ pub struct Project {
     pub title: String,
     #[serde(default)]
     pub sheets: Vec<Sheet>,
+    /// Shared styling across sheets, keyed by column / group /
+    /// dataset label. Auto-populated when a data sheet is added
+    /// (allow, not force — graphs with no matching entry just use
+    /// their default colour).
+    #[serde(default)]
+    pub legend_registry: LegendRegistry,
+}
+
+/// Project-level legend. Each entry owns the shared appearance
+/// (display name + colour, with marker and line width reserved
+/// for later) of one "key": typically a column title, group
+/// label, or Y-dataset label. Graphs look up their series key in
+/// the registry; a miss falls back to the plot layer's default
+/// colour wheel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct LegendRegistry {
+    pub entries: Vec<LegendEntry>,
+}
+
+/// One entry in the shared legend. Only the fields that are
+/// visible in a plot today — name and colour — are plumbed; the
+/// marker-shape and line-width fields on the ambition list come
+/// in M9.8+.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LegendEntry {
+    pub key: String,
+    pub display_name: String,
+    pub color: LegendColor,
+}
+
+/// RGB legend colour (0–255 per channel). Serialises as a flat
+/// `[r, g, b]` array in JSON for readability in the file.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct LegendColor(pub u8, pub u8, pub u8);
+
+impl LegendColor {
+    pub const WHEEL: [LegendColor; 6] = [
+        LegendColor(31, 119, 180),
+        LegendColor(255, 127, 14),
+        LegendColor(44, 160, 44),
+        LegendColor(214, 39, 40),
+        LegendColor(148, 103, 189),
+        LegendColor(140, 86, 75),
+    ];
+    pub fn pick(index: usize) -> LegendColor {
+        LegendColor::WHEEL[index % LegendColor::WHEEL.len()]
+    }
+}
+
+impl LegendRegistry {
+    /// Lookup an entry by its key. `None` is a tolerated miss —
+    /// graphs fall back to their plot-layer default colour.
+    pub fn get(&self, key: &str) -> Option<&LegendEntry> {
+        self.entries.iter().find(|e| e.key == key)
+    }
+
+    /// Lookup a mutable entry by key.
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut LegendEntry> {
+        self.entries.iter_mut().find(|e| e.key == key)
+    }
+
+    /// Ensure every key in `keys` has an entry; new entries pick
+    /// their default colour from the wheel at the current size.
+    /// Returns the number of entries created.
+    pub fn ensure_keys<I, S>(&mut self, keys: I) -> usize
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let mut added = 0;
+        for key in keys {
+            let key: String = key.into();
+            if key.is_empty() {
+                continue;
+            }
+            if self.get(&key).is_some() {
+                continue;
+            }
+            let color = LegendColor::pick(self.entries.len());
+            self.entries.push(LegendEntry {
+                key: key.clone(),
+                display_name: key,
+                color,
+            });
+            added += 1;
+        }
+        added
+    }
 }
 
 impl Project {
@@ -307,7 +458,26 @@ impl Project {
         Self {
             title: title.into(),
             sheets: Vec::new(),
+            legend_registry: LegendRegistry::default(),
         }
+    }
+
+    /// Collect every column / group / dataset label currently
+    /// present in Data sheets. Used to prime the legend registry.
+    pub fn collect_series_keys(&self) -> Vec<String> {
+        let mut keys = Vec::new();
+        for sheet in &self.sheets {
+            if let SheetBody::Data { table } = &sheet.body {
+                collect_keys_from_table(table, &mut keys);
+            }
+        }
+        keys
+    }
+
+    /// Shortcut: `collect_series_keys` + `legend_registry.ensure_keys`.
+    pub fn sync_legend_from_data(&mut self) -> usize {
+        let keys = self.collect_series_keys();
+        self.legend_registry.ensure_keys(keys)
     }
 
     /// Allocate the next unused sheet id (max of existing ids + 1,

@@ -7,12 +7,13 @@
 //! [`add_graph_sheet`] just records the binding.
 
 use graphcraft_format::{
-    source_hash, GraphColormap, GraphErrorBars, GraphSpec, Project, Sheet, SheetBody, SheetId,
+    source_hash, GraphColormap, GraphErrorBars, GraphSpec, LegendRegistry, Project, Sheet,
+    SheetBody, SheetId,
 };
 use graphcraft_numeric::NumericError;
 use graphcraft_plot::{
-    column_scene, heatmap_scene, xy_scene_from_points, Colormap, ColumnErrorBars, ColumnOptions,
-    HeatmapData, HeatmapOptions, Scene, XyOptions,
+    column_scene, heatmap_scene, xy_scene_from_points, Color, Colormap, ColumnErrorBars,
+    ColumnOptions, HeatmapData, HeatmapOptions, Scene, Series, XyOptions,
 };
 use graphcraft_table::{AnyTable, ColumnTable};
 
@@ -54,6 +55,63 @@ impl std::error::Error for GraphError {}
 impl From<NumericError> for GraphError {
     fn from(value: NumericError) -> Self {
         GraphError::Numeric(value)
+    }
+}
+
+/// Build a scene from `(table, spec)` and apply the project's
+/// legend registry so series inherit the user-chosen colour for
+/// each key. Call this (instead of the bare `build_graph_scene`)
+/// from any UI that respects shared styling.
+pub fn build_graph_scene_in_project(
+    project: &Project,
+    source: SheetId,
+    spec: &GraphSpec,
+) -> Result<Scene, GraphError> {
+    let table = project
+        .data_sheet_table(source)
+        .ok_or(GraphError::SourceMissing(source))?;
+    let mut scene = build_graph_scene(table, spec)?;
+    apply_legend(&mut scene, &project.legend_registry);
+    Ok(scene)
+}
+
+/// Overwrite scene series colours from the registry. Series
+/// without a matching key keep whatever colour the plot layer
+/// gave them (the "allow, not force" default).
+pub fn apply_legend(scene: &mut Scene, registry: &LegendRegistry) {
+    for series in &mut scene.series {
+        match series {
+            Series::Scatter { label, marker, .. } => {
+                if let Some(e) = registry.get(label) {
+                    marker.fill = Color(e.color.0, e.color.1, e.color.2);
+                }
+            }
+            Series::Line { label, style, .. } => {
+                if let Some(e) = registry.get(label) {
+                    style.stroke = Color(e.color.0, e.color.1, e.color.2);
+                }
+            }
+            Series::Bars { .. } => {
+                // Column plots carry per-bar labels in one shared
+                // MarkerStyle. Per-bar legend colouring needs a
+                // ColumnBar.color field (M9.8); for M9.7 we leave
+                // the series fill as the plot layer picked it.
+            }
+            Series::GroupedBars { label, marker, .. } => {
+                if let Some(e) = registry.get(label) {
+                    marker.fill = Color(e.color.0, e.color.1, e.color.2);
+                }
+            }
+            Series::CensorTicks { label, style, .. } => {
+                if let Some(e) = registry.get(label) {
+                    style.stroke = Color(e.color.0, e.color.1, e.color.2);
+                }
+            }
+            Series::Heatmap { .. } => {
+                // Heatmaps use a colormap; no per-series legend
+                // override (M10+).
+            }
+        }
     }
 }
 
@@ -202,10 +260,12 @@ fn build_xy(table: &AnyTable, x: &str, y: &str, title: Option<&str>) -> Result<S
         y_title: Some(t.columns[iy].title.clone()),
         ..XyOptions::default()
     };
+    // Use the y column's title as the series label so the legend
+    // registry (keyed on column titles) finds it.
     Ok(xy_scene_from_points(
         &pts,
         &opts,
-        format!("{} vs {}", t.columns[iy].title, t.columns[ix].title),
+        t.columns[iy].title.clone(),
     )?)
 }
 

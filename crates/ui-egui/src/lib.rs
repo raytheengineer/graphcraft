@@ -52,7 +52,7 @@ impl FileService for NoFileService {
 
 use egui::{Color32, ComboBox, Modal, Panel, RichText, ScrollArea, TextEdit, Ui};
 use graphcraft_analysis::{
-    add_analysis_sheet, add_graph_sheet, build_graph_scene, recompute_all_stale,
+    add_analysis_sheet, add_graph_sheet, build_graph_scene_in_project, recompute_all_stale,
     recompute_analysis_sheet, recompute_graph_sheet,
 };
 use graphcraft_format::{
@@ -300,6 +300,7 @@ impl AppState {
         let data_id = self
             .project
             .add_data_sheet(title.to_string(), AnyTable::Column(column_table));
+        self.project.sync_legend_from_data();
         let graph_id = graphcraft_analysis::add_graph_sheet(
             &mut self.project,
             data_id,
@@ -403,12 +404,46 @@ impl AppState {
 
             ui.add_space(8.0);
             section(ui, "Legend");
+            if ui.small_button("Sync keys from data").clicked() {
+                let n = self.project.sync_legend_from_data();
+                self.status_line = format!("added {n} legend entries");
+            }
+            self.render_legend_entries(ui);
+        });
+    }
+
+    fn render_legend_entries(&mut self, ui: &mut Ui) {
+        let n = self.project.legend_registry.entries.len();
+        if n == 0 {
             ui.label(
-                RichText::new("Shared dataset styling — wires up in M9.7")
+                RichText::new("No keys yet — add a data sheet.")
                     .weak()
                     .small(),
             );
-        });
+            return;
+        }
+        for i in 0..n {
+            let entry = &mut self.project.legend_registry.entries[i];
+            ui.horizontal(|ui| {
+                let mut rgb = [
+                    entry.color.0 as f32 / 255.0,
+                    entry.color.1 as f32 / 255.0,
+                    entry.color.2 as f32 / 255.0,
+                ];
+                if ui.color_edit_button_rgb(&mut rgb).changed() {
+                    entry.color = graphcraft_format::LegendColor(
+                        (rgb[0] * 255.0).round().clamp(0.0, 255.0) as u8,
+                        (rgb[1] * 255.0).round().clamp(0.0, 255.0) as u8,
+                        (rgb[2] * 255.0).round().clamp(0.0, 255.0) as u8,
+                    );
+                }
+                ui.add(
+                    TextEdit::singleline(&mut entry.display_name)
+                        .desired_width(140.0)
+                        .hint_text(&entry.key),
+                );
+            });
+        }
     }
 
     fn first_data_sheet(&self) -> Option<SheetId> {
@@ -519,11 +554,7 @@ impl AppState {
         source: SheetId,
         spec: &graphcraft_format::GraphSpec,
     ) {
-        let Some(table) = self.project.data_sheet_table(source) else {
-            ui.label(RichText::new("source data sheet is missing").weak());
-            return;
-        };
-        match build_graph_scene(table, spec) {
+        match build_graph_scene_in_project(&self.project, source, spec) {
             Ok(scene) => {
                 scene_painter::paint_scene(ui, &scene);
             }
@@ -1022,6 +1053,7 @@ impl AppState {
             },
         };
         let data_id = self.project.add_data_sheet(final_title.clone(), table);
+        self.project.sync_legend_from_data();
         // Auto-create a Placeholder graph bound to the fresh data.
         let graph_id = graphcraft_analysis::add_graph_sheet(
             &mut self.project,
