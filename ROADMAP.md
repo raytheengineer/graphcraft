@@ -83,8 +83,14 @@ for everything after.
       ANOVA table; Bonferroni and Šidák p-value adjustments
       (`bonferroni`, `sidak`, `*_family`). Five new closed-form parity
       rows at 1e-13 or tighter.
-- [ ] M3.3b — Tukey HSD (needs studentized-range q distribution) and
-      Dunnett's test (needs multivariate t)
+- [x] M3.3b.1 — Normal distribution (`erf`/`phi`/`big_phi`/`phi_inv`
+      via A&S 7.1.26); 32-point Gauss-Legendre quadrature primitive;
+      studentized-range distribution via the standard integral form;
+      Tukey HSD (Tukey-Kramer form) with `tukey_hsd` /
+      `column_tukey_hsd`. Five new parity rows (two normal, one
+      closed-form q, two Harter 1960 tabled)
+- [ ] M3.3b.2 — Dunnett's test (equi-correlated multivariate t for
+      balanced designs)
 - [ ] M3.4 — Non-parametric: Mann-Whitney, Wilcoxon, Kruskal-Wallis,
       Dunn's post-hoc
 ### M4 — Linear + nonlinear regression (LM + published model library)
@@ -108,6 +114,8 @@ published reference values, not against Prism.
 | one-way-anova | Closed form on `[1,2,3]/[4,5,6]/[7,8,9]`: `F=27`, `SS=(54,6)` | passing | 1e-13 |
 | bonferroni | Closed form `p·m` | passing | 1e-15 |
 | sidak | Closed form `1−(1−p)^m` | passing | 1e-15 |
+| normal-cdf | Φ(0)=0.5, Φ(1.959964)=0.975 | passing | 2e-7 (A&S bound) |
+| studentized-range-cdf | `F(q;2,∞) = 2·Φ(q/√2)−1`; Harter 1960 crit values at (3,∞) and (3,10) | passing | 1e-5 closed / 2e-3 tabled |
 
 ## Known numerical gaps
 _(none logged yet)_

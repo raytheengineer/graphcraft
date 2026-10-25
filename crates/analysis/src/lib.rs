@@ -8,8 +8,8 @@
 
 use graphcraft_numeric::NumericError;
 use graphcraft_stats::{
-    one_sample_t, one_way_anova, paired_t, unpaired_t, Descriptives, OneSampleT, OneWayAnova,
-    PairedT, TwoSampleKind, TwoSampleT,
+    one_sample_t, one_way_anova, paired_t, tukey_hsd, unpaired_t, Descriptives, OneSampleT,
+    OneWayAnova, PairedT, PairwiseComparison, TwoSampleKind, TwoSampleT,
 };
 use graphcraft_table::ColumnTable;
 
@@ -99,6 +99,15 @@ pub fn column_one_way_anova(table: &ColumnTable) -> Result<OneWayAnova, NumericE
         }
     }
     one_way_anova(&groups)
+}
+
+/// Tukey HSD post-hoc on top of a one-way ANOVA of a Column table.
+/// The returned indices (`i`, `j`) refer to the ANOVA group order,
+/// which preserves the original column order after dropping empty
+/// columns.
+pub fn column_tukey_hsd(table: &ColumnTable) -> Result<Vec<PairwiseComparison>, NumericError> {
+    let anova = column_one_way_anova(table)?;
+    tukey_hsd(&anova)
 }
 
 /// Descriptive statistics for one group (one column) of a Column

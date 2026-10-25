@@ -29,6 +29,9 @@ Behaviour reference is public documentation only — see `AGENTS.md`.
 | One-way ANOVA                 | `one_way_anova`      | `column_one_way_anova` | Closed form: `F = 27, SS = (54, 6)` |
 | Bonferroni adjustment         | `bonferroni` / `bonferroni_family` | — | Closed form: `p·m` |
 | Šidák adjustment              | `sidak` / `sidak_family` | — | Closed form: `1 − (1 − p)^m` |
+| Normal distribution           | `distributions::normal::{phi, big_phi, phi_inv, erf}` | — | A&S 7.1.26 (≈1.5·10⁻⁷) |
+| Studentized-range distribution | `distributions::studentized_range::{q_cdf, q_sf, q_inv_cdf}` | — | `F(q;2,∞) = 2·Φ(q/√2)−1`; Harter (1960) tabled |
+| Tukey HSD post-hoc            | `tukey_hsd`          | `column_tukey_hsd`     | Verified via q-dist parity |
 
 ## Descriptive statistics (M3.0)
 
@@ -195,8 +198,65 @@ Parity rows:
 - `sidak(0.05, 2) = 0.0975` at 1e-15.
 
 Deferred to M3.3+:
-- Tukey's HSD — needs the studentized-range (q) distribution.
-- Dunnett's test — needs the multivariate t-distribution and
-  Dunnett's own critical-value tables (public domain; implementation
-  will transcribe the published algorithm, not Prism).
+- Dunnett's test — needs the multivariate t-distribution. Shipping
+  in M3.3b.2 (next slice).
 - Two-way and mixed ANOVA — scheduled with M6 remaining analyses.
+
+## Normal distribution, studentized-range, and Tukey HSD (M3.3b.1)
+
+`graphcraft_stats::distributions::normal` ships `erf`, `phi`,
+`big_phi` (Φ), and `phi_inv` (Φ⁻¹). `erf` uses the Abramowitz &
+Stegun 7.1.26 rational approximation with max absolute error
+≈ 1.5·10⁻⁷; that is sufficient for the post-hoc critical-value
+tables (3 dp) and for M3.4 large-sample approximations, and will
+be upgraded to full double precision when a parity row needs it.
+Φ⁻¹ bisects on Φ.
+
+`graphcraft_stats::quadrature` ships the 32-point Gauss–Legendre
+rule on `[−1, 1]`, with nodes and weights from the public A&S §25.4
+tables, and a convenience `gl32_integrate(a, b, f)`.
+
+`graphcraft_stats::distributions::studentized_range` ships
+`q_cdf(q, k, df)`, `q_sf`, and `q_inv_cdf` for the Tukey q
+distribution. For `df = ∞` the CDF uses the standard identity
+`F(q; k, ∞) = k · ∫ φ(z) · [Φ(z+q) − Φ(z)]^{k−1} dz` evaluated by
+Gauss–Legendre over `z ∈ [−8, 8]`. For finite df the finite-ν
+integral weights the asymptotic form by the chi density of
+`W = √(χ²_ν/ν)`.
+
+`graphcraft_stats::anova::tukey_hsd(&OneWayAnova)` produces all
+`k·(k−1)/2` pairwise comparisons with the Tukey–Kramer harmonic-mean
+adjustment for unequal `n_i`:
+- `n_h = 2 / (1/n_i + 1/n_j)`
+- `se = √(MS_within / n_h)`
+- `q = |mean_diff| / se`
+- `p_adj = P(Q ≥ q; k, df_within)`.
+
+Analysis API: `column_tukey_hsd(&ColumnTable)` runs ANOVA across the
+non-empty columns and returns pairwise comparisons in column order.
+
+Behaviour references (public):
+- Lund, R. E. & Lund, J. R. (1983) Algorithm AS 190, Applied
+  Statistics 32, 204–210.
+- Harter, H. L. (1960) *Annals of Mathematical Statistics* 31,
+  1122–1147 (critical-value tables, used only as public parity
+  oracle, not for implementation).
+- Tukey, J. W. (1953) "The problem of multiple comparisons",
+  unpublished Princeton manuscript; see Kramer, C. Y. (1956)
+  *Biometrics* 12, 307–310 for the harmonic-mean extension.
+
+Parity rows (new):
+- `normal-cdf` at `x = 0` → `0.5` at 2·10⁻⁷ (A&S bound).
+- `normal-cdf` at `x = Φ⁻¹(0.975) ≈ 1.959964` → `0.975` at 2·10⁻⁷.
+- `studentized-range-cdf` closed form at `(q = √2·Φ⁻¹(0.975),
+  k = 2, df = ∞)` → `0.95` at 1·10⁻⁵.
+- `studentized-range-cdf` at Harter's `q_{0.05}(3, ∞) = 3.3145` →
+  `0.95` at 2·10⁻³.
+- `studentized-range-cdf` at Harter's `q_{0.05}(3, 10) = 3.877` →
+  `0.95` at 2·10⁻³.
+
+Deferred to M3.3b+:
+- Dunnett's one- and two-sided tests (needs equi-correlated
+  multivariate t; next slice M3.3b.2).
+- A higher-precision `erf` to tighten the normal and q parity
+  rows below ~10⁻⁷ when a downstream test needs it.

@@ -17,3 +17,8 @@ one-way-anova,inline-groups:1;2;3||4;5;6||7;8;9,ss_between,54.0,1e-13,closed-for
 one-way-anova,inline-groups:1;2;3||4;5;6||7;8;9,ss_within,6.0,1e-13,closed-form:3*(n-1)*1
 bonferroni,p=0.01;m=5,p_adj,0.05,1e-15,closed-form:min(1;p*m)
 sidak,p=0.05;m=2,p_adj,0.0975,1e-15,closed-form:1-(1-p)^m
+normal-cdf,x=0,phi,0.5,2e-7,AS-7.1.26:Phi(0)=0.5
+normal-cdf,x=1.959963984540054,phi,0.975,2e-7,AS-7.1.26:Phi(Phi_inv(0.975))=0.975
+studentized-range-cdf,q=2.7718619194388;k=2;df=inf,p,0.95,1e-5,closed-form:F(q;2;inf)=2*Phi(q/sqrt(2))-1
+studentized-range-cdf,q=3.3145;k=3;df=inf,p,0.95,2e-3,harter-1960:q_0.05(3;inf)
+studentized-range-cdf,q=3.877;k=3;df=10,p,0.95,2e-3,harter-1960:q_0.05(3;10)

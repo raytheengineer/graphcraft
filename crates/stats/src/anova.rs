@@ -13,6 +13,7 @@ use graphcraft_numeric::NumericError;
 
 use crate::descriptive::Descriptives;
 use crate::distributions::f::f_sf;
+use crate::distributions::studentized_range::q_sf;
 
 /// Result of a one-way ANOVA.
 #[derive(Debug, Clone, PartialEq)]
@@ -101,6 +102,72 @@ pub fn one_way_anova(groups: &[Vec<f64>]) -> Result<OneWayAnova, NumericError> {
     })
 }
 
+/// A single pairwise comparison from a post-hoc test.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PairwiseComparison {
+    pub i: usize,
+    pub j: usize,
+    /// `mean_j − mean_i`.
+    pub mean_diff: f64,
+    /// Standard error of the difference under the model that produced
+    /// the comparison (post-hoc specific).
+    pub se_diff: f64,
+    /// Test statistic (e.g. studentized `q` for Tukey HSD).
+    pub stat: f64,
+    /// Adjusted (family-wise) p-value under the post-hoc.
+    pub p_adj: f64,
+}
+
+/// Tukey's HSD post-hoc for all `k·(k−1)/2` pairs of groups from a
+/// one-way ANOVA. The pooled within-group variance from the ANOVA
+/// (`ms_within`, `df_within`) is used, with Tukey's harmonic-mean
+/// adjustment for unequal `n_i` (Tukey–Kramer form).
+///
+/// `stat` is the studentized `q = |mean_diff| / √(MS_within / n_h)`
+/// where `n_h = 2 / (1/n_i + 1/n_j)` is the harmonic mean of the two
+/// group sizes. `p_adj` is `P(Q ≥ q; k, ν)` from the studentized-range
+/// distribution.
+pub fn tukey_hsd(a: &OneWayAnova) -> Result<Vec<PairwiseComparison>, NumericError> {
+    let k = a.k;
+    if k < 2 {
+        return Err(NumericError::TooFewValues {
+            required: 2,
+            got: k,
+        });
+    }
+    if !a.ms_within.is_finite() || a.ms_within <= 0.0 {
+        return Err(NumericError::DivisionByZero);
+    }
+    #[allow(clippy::integer_division)]
+    let mut out = Vec::with_capacity(k * (k - 1) / 2);
+    for i in 0..k {
+        for j in (i + 1)..k {
+            let ni = a.group_ns[i] as f64;
+            let nj = a.group_ns[j] as f64;
+            if ni < 1.0 || nj < 1.0 {
+                return Err(NumericError::TooFewValues {
+                    required: 1,
+                    got: 0,
+                });
+            }
+            let n_h = 2.0 / (1.0 / ni + 1.0 / nj);
+            let se = (a.ms_within / n_h).sqrt();
+            let mean_diff = a.group_means[j] - a.group_means[i];
+            let q_stat = mean_diff.abs() / se;
+            let p_adj = q_sf(q_stat, k, a.df_within)?;
+            out.push(PairwiseComparison {
+                i,
+                j,
+                mean_diff,
+                se_diff: se,
+                stat: q_stat,
+                p_adj,
+            });
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,6 +198,26 @@ mod tests {
     fn one_way_rejects_single_group() {
         let err = one_way_anova(&[vec![1.0, 2.0, 3.0]]).unwrap_err();
         assert!(matches!(err, NumericError::TooFewValues { .. }));
+    }
+
+    #[test]
+    fn tukey_hsd_three_groups() {
+        let a = vec![1.0, 2.0, 3.0];
+        let b = vec![4.0, 5.0, 6.0];
+        let c = vec![7.0, 8.0, 9.0];
+        let anova = one_way_anova(&[a, b, c]).unwrap();
+        let pairs = tukey_hsd(&anova).unwrap();
+        assert_eq!(pairs.len(), 3);
+        // Each pair has mean_diff ∈ {3, 3, 6}; se = √(1/3) with n_h=3,
+        // MS_within = 1, so q(ab) = 3/√(1/3) = 3√3 ≈ 5.196, q(ac) = 6√3 ≈ 10.39.
+        // All three should be strongly significant.
+        for p in &pairs {
+            assert!(p.p_adj < 0.05, "pair {:?}: p={}", (p.i, p.j), p.p_adj);
+        }
+        let p_ac = pairs.iter().find(|p| p.i == 0 && p.j == 2).unwrap();
+        assert!((p_ac.mean_diff - 6.0).abs() < 1e-13);
+        // q = 6/sqrt(1/3) = 6*sqrt(3) ≈ 10.3923.
+        assert!((p_ac.stat - 6.0 * 3.0_f64.sqrt()).abs() < 1e-13);
     }
 
     #[test]

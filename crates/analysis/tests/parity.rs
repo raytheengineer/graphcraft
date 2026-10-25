@@ -164,6 +164,18 @@ fn run(row: &Row) -> f64 {
             other => panic!("unknown two-sample statistic: {other:?}"),
         };
     }
+    if row.analysis == "normal-cdf" {
+        let p = parse_params(&row.dataset);
+        let x = *p.get("x").expect("normal-cdf needs x");
+        return graphcraft_stats::distributions::normal::big_phi(x);
+    }
+    if row.analysis == "studentized-range-cdf" {
+        let p = parse_params(&row.dataset);
+        let q = *p.get("q").expect("studentized-range-cdf needs q");
+        let k = *p.get("k").expect("studentized-range-cdf needs k") as usize;
+        let df = *p.get("df").expect("studentized-range-cdf needs df");
+        return graphcraft_stats::distributions::studentized_range::q_cdf(q, k, df).unwrap();
+    }
     if row.analysis == "f-cdf" {
         let p = parse_params(&row.dataset);
         let d1 = *p.get("d1").expect("f-cdf needs d1");
