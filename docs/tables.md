@@ -17,7 +17,7 @@ by URL.
 | XY                    | ✅ (M2.1)   | `XyTable`                     |
 | Grouped               | ✅ (M2.3)   | `GroupedTable`                |
 | Contingency           | ✅ (M2.4)   | `ContingencyTable`            |
-| Survival              | planned     | —                             |
+| Survival              | ✅ (M2.5)   | `SurvivalTable`               |
 | Parts-of-whole        | planned     | —                             |
 | Multiple-variables    | planned     | —                             |
 | Nested                | planned     | —                             |
@@ -100,6 +100,20 @@ test, and relative-risk / odds-ratio analyses.
   the degenerate case of a zero grand total.
 - Counts are `u64` (not `f64`) so a value error at import time is a
   structural rejection rather than a silent reinterpretation.
+
+## Survival tables (`SurvivalTable`)
+
+One group per treatment arm, one row per subject. Each row records
+a non-negative `time` and a boolean `censored` flag:
+`censored = false` means the event (death, failure, …) occurred at
+`time`; `censored = true` means the subject exited observation
+without the event (lost to follow-up, still alive at study end).
+Rows are not required to be sorted — Kaplan-Meier estimation will
+sort by time at analysis time.
+
+- `width()` groups, `subjects()` total rows across groups.
+- `SurvivalGroup::events()` and `.censored()` count by category.
+- `validate()` rejects non-finite or negative times.
 
 ## Typed container (`AnyTable`)
 

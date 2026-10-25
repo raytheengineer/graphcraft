@@ -583,6 +583,128 @@ impl ContingencyTable {
     }
 }
 
+// -------- Survival tables --------------------------------------------
+//
+// Prism's Survival layout: one group per column (treatment arm, say),
+// one row per subject, each row recording a time and a censor flag.
+// `censored = false` means the event (death, failure, …) occurred at
+// that time; `censored = true` means the subject exited observation
+// without the event (lost to follow-up, still alive at study end).
+// Powers Kaplan-Meier estimation, log-rank and Gehan-Breslow-Wilcoxon.
+//
+// Reference (public manual, "Survival analysis"):
+//   https://www.graphpad.com/guides/prism/latest/user-guide/
+
+/// One subject's record in a [`SurvivalGroup`].
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SurvivalRow {
+    pub time: f64,
+    /// `false` = event occurred at `time`; `true` = censored at `time`.
+    pub censored: bool,
+}
+
+/// One group (treatment arm) in a [`SurvivalTable`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SurvivalGroup {
+    pub title: String,
+    pub rows: Vec<SurvivalRow>,
+}
+
+impl SurvivalGroup {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            rows: Vec::new(),
+        }
+    }
+
+    /// Count of recorded events (uncensored rows).
+    pub fn events(&self) -> usize {
+        self.rows.iter().filter(|r| !r.censored).count()
+    }
+
+    /// Count of censored rows.
+    pub fn censored(&self) -> usize {
+        self.rows.iter().filter(|r| r.censored).count()
+    }
+}
+
+/// Reason a [`SurvivalTable`] fails [`SurvivalTable::validate`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum SurvivalError {
+    /// A row has a non-finite time.
+    TimeNotFinite { group: usize, row: usize },
+    /// A row has a negative time (times are durations).
+    NegativeTime { group: usize, row: usize, time: f64 },
+}
+
+impl std::fmt::Display for SurvivalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SurvivalError::TimeNotFinite { group, row } => {
+                write!(f, "survival group {group} row {row}: time is not finite")
+            }
+            SurvivalError::NegativeTime { group, row, time } => write!(
+                f,
+                "survival group {group} row {row}: time {time} is negative"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SurvivalError {}
+
+/// A survival-analysis data table: one group per treatment arm, one
+/// row per subject.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SurvivalTable {
+    pub title: String,
+    pub time_title: String,
+    pub groups: Vec<SurvivalGroup>,
+}
+
+impl SurvivalTable {
+    pub fn new(title: impl Into<String>, time_title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            time_title: time_title.into(),
+            groups: Vec::new(),
+        }
+    }
+
+    pub fn kind(&self) -> TableKind {
+        TableKind::Survival
+    }
+
+    /// Number of groups (treatment arms).
+    pub fn width(&self) -> usize {
+        self.groups.len()
+    }
+
+    /// Total subjects across all groups.
+    pub fn subjects(&self) -> usize {
+        self.groups.iter().map(|g| g.rows.len()).sum()
+    }
+
+    pub fn validate(&self) -> Result<(), SurvivalError> {
+        for (gi, g) in self.groups.iter().enumerate() {
+            for (ri, r) in g.rows.iter().enumerate() {
+                if !r.time.is_finite() {
+                    return Err(SurvivalError::TimeNotFinite { group: gi, row: ri });
+                }
+                if r.time < 0.0 {
+                    return Err(SurvivalError::NegativeTime {
+                        group: gi,
+                        row: ri,
+                        time: r.time,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 // -------- AnyTable (typed container) ---------------------------------
 //
 // Documents hold a heterogenous list of tables (an experiment may mix
@@ -600,6 +722,7 @@ pub enum AnyTable {
     Xy(XyTable),
     Grouped(GroupedTable),
     Contingency(ContingencyTable),
+    Survival(SurvivalTable),
 }
 
 impl AnyTable {
@@ -609,6 +732,7 @@ impl AnyTable {
             AnyTable::Xy(_) => TableKind::Xy,
             AnyTable::Grouped(_) => TableKind::Grouped,
             AnyTable::Contingency(_) => TableKind::Contingency,
+            AnyTable::Survival(_) => TableKind::Survival,
         }
     }
 }
@@ -634,6 +758,12 @@ impl From<GroupedTable> for AnyTable {
 impl From<ContingencyTable> for AnyTable {
     fn from(t: ContingencyTable) -> Self {
         AnyTable::Contingency(t)
+    }
+}
+
+impl From<SurvivalTable> for AnyTable {
+    fn from(t: SurvivalTable) -> Self {
+        AnyTable::Survival(t)
     }
 }
 
@@ -1052,6 +1182,95 @@ mod tests {
         let t: AnyTable = sample_contingency().into();
         let json = serde_json::to_string(&t).unwrap();
         assert!(json.contains("\"kind\":\"contingency\""), "got {json}");
+        let back: AnyTable = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, back);
+    }
+
+    fn sample_survival() -> SurvivalTable {
+        SurvivalTable {
+            title: "trial".into(),
+            time_title: "months".into(),
+            groups: vec![
+                SurvivalGroup {
+                    title: "Placebo".into(),
+                    rows: vec![
+                        SurvivalRow {
+                            time: 2.0,
+                            censored: false,
+                        },
+                        SurvivalRow {
+                            time: 5.5,
+                            censored: false,
+                        },
+                        SurvivalRow {
+                            time: 12.0,
+                            censored: true,
+                        },
+                    ],
+                },
+                SurvivalGroup {
+                    title: "Drug".into(),
+                    rows: vec![
+                        SurvivalRow {
+                            time: 8.0,
+                            censored: false,
+                        },
+                        SurvivalRow {
+                            time: 12.0,
+                            censored: true,
+                        },
+                        SurvivalRow {
+                            time: 12.0,
+                            censored: true,
+                        },
+                    ],
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn survival_shape_counts() {
+        let t = sample_survival();
+        assert_eq!(t.kind(), TableKind::Survival);
+        assert_eq!(t.width(), 2);
+        assert_eq!(t.subjects(), 6);
+        assert_eq!(t.groups[0].events(), 2);
+        assert_eq!(t.groups[0].censored(), 1);
+        assert_eq!(t.groups[1].events(), 1);
+        assert_eq!(t.groups[1].censored(), 2);
+        t.validate().unwrap();
+    }
+
+    #[test]
+    fn survival_nonfinite_time_rejected() {
+        let mut t = sample_survival();
+        t.groups[0].rows[0].time = f64::NAN;
+        assert!(matches!(
+            t.validate().unwrap_err(),
+            SurvivalError::TimeNotFinite { group: 0, row: 0 }
+        ));
+    }
+
+    #[test]
+    fn survival_negative_time_rejected() {
+        let mut t = sample_survival();
+        t.groups[1].rows[1].time = -1.0;
+        assert!(matches!(
+            t.validate().unwrap_err(),
+            SurvivalError::NegativeTime {
+                group: 1,
+                row: 1,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn survival_round_trip_as_any_table() {
+        let t: AnyTable = sample_survival().into();
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(json.contains("\"kind\":\"survival\""), "got {json}");
         let back: AnyTable = serde_json::from_str(&json).unwrap();
         assert_eq!(t, back);
     }

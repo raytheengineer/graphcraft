@@ -55,7 +55,10 @@ for everything after.
       validation, `AnyTable::Grouped` round-trip)
 - [x] M2.4 — Contingency (`ContingencyTable`, row-major u64 counts,
       row/col totals, validate, `AnyTable::Contingency` round-trip)
-- [ ] M2.5 — Survival
+- [x] M2.5 — Survival (`SurvivalTable`, `SurvivalGroup`,
+      `SurvivalRow { time, censored }`, event/censored counts,
+      finite+non-negative time validation,
+      `AnyTable::Survival` round-trip)
 - [ ] M2.6 — Parts-of-whole / Multiple-variables / Nested
 ### M3 — Descriptive + t-tests + 1-way ANOVA + non-parametric
 ### M4 — Linear + nonlinear regression (LM + published model library)
