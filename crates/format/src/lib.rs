@@ -5,6 +5,7 @@
 pub mod csv;
 pub use csv::import_csv;
 
+use graphcraft_table::AnyTable;
 use serde::{Deserialize, Serialize};
 
 pub const FORMAT_TAG: &str = "graphcraft";
@@ -17,7 +18,7 @@ pub struct Document {
     pub format: String,
     pub version: u32,
     #[serde(default)]
-    pub tables: Vec<serde_json::Value>,
+    pub tables: Vec<AnyTable>,
     #[serde(default)]
     pub analyses: Vec<serde_json::Value>,
     #[serde(default)]
@@ -100,5 +101,25 @@ mod tests {
     fn wrong_format_rejected() {
         let bytes = br#"{"format":"notgraphcraft","version":1}"#;
         assert!(matches!(parse(bytes), Err(FormatError::WrongFormat)));
+    }
+
+    #[test]
+    fn document_round_trips_with_typed_tables() {
+        use graphcraft_table::{Column, ColumnTable};
+        let mut doc = Document::empty();
+        doc.tables.push(
+            ColumnTable {
+                title: "cells".into(),
+                row_titles: Vec::new(),
+                columns: vec![Column {
+                    title: "ctrl".into(),
+                    values: vec![Some(1.0), Some(2.5), None, Some(3.3)],
+                }],
+            }
+            .into(),
+        );
+        let bytes = serialize(&doc).unwrap();
+        let parsed = parse(&bytes).unwrap();
+        assert_eq!(doc, parsed);
     }
 }

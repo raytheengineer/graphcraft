@@ -37,12 +37,19 @@ impl Column {
     }
 }
 
-/// A Column-style data table: an overall title and a vector of columns,
-/// each with its own header. Rows are implicit; columns need not be the
-/// same length (ragged columns are allowed, as in Prism's Column tables).
+/// A Column-style data table: an overall title, optional per-row
+/// labels, and a vector of columns. Each column is one group; its
+/// cells are the group's replicate observations top-down.
+///
+/// Columns need not be the same length (ragged tables are allowed, as
+/// in Prism's Column tables — one group may have more replicates than
+/// another). `row_titles` is parallel to the longest column; an empty
+/// `row_titles` means "no user labels, address rows by 1-based index".
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnTable {
     pub title: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub row_titles: Vec<String>,
     pub columns: Vec<Column>,
 }
 
@@ -50,6 +57,7 @@ impl ColumnTable {
     pub fn new(title: impl Into<String>) -> Self {
         Self {
             title: title.into(),
+            row_titles: Vec::new(),
             columns: Vec::new(),
         }
     }
@@ -58,7 +66,7 @@ impl ColumnTable {
         TableKind::Column
     }
 
-    /// Number of columns.
+    /// Number of columns (groups).
     pub fn width(&self) -> usize {
         self.columns.len()
     }
@@ -70,6 +78,26 @@ impl ColumnTable {
             .map(|c| c.values.len())
             .max()
             .unwrap_or(0)
+    }
+
+    /// Iterate the non-missing replicate values for one column (one
+    /// group). Returns an empty iterator if the index is out of range.
+    pub fn group_values(&self, col: usize) -> impl Iterator<Item = f64> + '_ {
+        self.columns
+            .get(col)
+            .into_iter()
+            .flat_map(|c| c.values.iter().copied().flatten())
+    }
+
+    /// Replicate count (non-missing) for one column.
+    pub fn group_n(&self, col: usize) -> usize {
+        self.group_values(col).count()
+    }
+
+    /// `true` if `row_titles` is either empty or has one entry per row
+    /// of the longest column.
+    pub fn row_titles_valid(&self) -> bool {
+        self.row_titles.is_empty() || self.row_titles.len() == self.height()
     }
 }
 
@@ -256,6 +284,44 @@ impl XyTable {
     }
 }
 
+// -------- AnyTable (typed container) ---------------------------------
+//
+// Documents hold a heterogenous list of tables (an experiment may mix
+// Column tables for one-way comparisons with XY tables for a
+// dose-response). `AnyTable` is the discriminator-tagged serde enum
+// used in [`graphcraft_format::Document::tables`].
+
+/// Any table layout GraphCraft currently understands. Serialized with
+/// a `"kind"` discriminator so new variants can be added without
+/// breaking existing documents.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AnyTable {
+    Column(ColumnTable),
+    Xy(XyTable),
+}
+
+impl AnyTable {
+    pub fn kind(&self) -> TableKind {
+        match self {
+            AnyTable::Column(_) => TableKind::Column,
+            AnyTable::Xy(_) => TableKind::Xy,
+        }
+    }
+}
+
+impl From<ColumnTable> for AnyTable {
+    fn from(t: ColumnTable) -> Self {
+        AnyTable::Column(t)
+    }
+}
+
+impl From<XyTable> for AnyTable {
+    fn from(t: XyTable) -> Self {
+        AnyTable::Xy(t)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,6 +330,7 @@ mod tests {
     fn height_is_longest_column() {
         let t = ColumnTable {
             title: "t".into(),
+            row_titles: Vec::new(),
             columns: vec![
                 Column {
                     title: "a".into(),
@@ -418,5 +485,70 @@ mod tests {
         let bytes = serde_json::to_vec(&t).unwrap();
         let back: XyTable = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(t, back);
+    }
+
+    #[test]
+    fn column_group_values_skip_missing() {
+        let t = ColumnTable {
+            title: "t".into(),
+            row_titles: Vec::new(),
+            columns: vec![Column {
+                title: "ctrl".into(),
+                values: vec![Some(1.0), None, Some(2.0), Some(3.5), None],
+            }],
+        };
+        let xs: Vec<f64> = t.group_values(0).collect();
+        assert_eq!(xs, vec![1.0, 2.0, 3.5]);
+        assert_eq!(t.group_n(0), 3);
+    }
+
+    #[test]
+    fn column_group_values_out_of_range_is_empty() {
+        let t = ColumnTable::new("empty");
+        assert_eq!(t.group_values(42).count(), 0);
+        assert_eq!(t.group_n(42), 0);
+    }
+
+    #[test]
+    fn column_row_titles_valid_rules() {
+        let mut t = ColumnTable {
+            title: "t".into(),
+            row_titles: Vec::new(),
+            columns: vec![Column {
+                title: "a".into(),
+                values: vec![Some(1.0), Some(2.0), Some(3.0)],
+            }],
+        };
+        assert!(t.row_titles_valid());
+        t.row_titles = vec!["r1".into(), "r2".into(), "r3".into()];
+        assert!(t.row_titles_valid());
+        t.row_titles.push("r4".into());
+        assert!(!t.row_titles_valid());
+    }
+
+    #[test]
+    fn any_table_round_trips_with_kind_tag() {
+        let column: AnyTable = ColumnTable {
+            title: "cells".into(),
+            row_titles: vec!["baseline".into()],
+            columns: vec![Column {
+                title: "ctrl".into(),
+                values: vec![Some(1.0)],
+            }],
+        }
+        .into();
+        let xy: AnyTable = sample_xy().into();
+        for t in [column, xy] {
+            let json = serde_json::to_string(&t).unwrap();
+            let back: AnyTable = serde_json::from_str(&json).unwrap();
+            assert_eq!(t, back);
+        }
+    }
+
+    #[test]
+    fn any_table_json_carries_kind_discriminator() {
+        let t: AnyTable = ColumnTable::new("x").into();
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(json.contains("\"kind\":\"column\""), "got {json}");
     }
 }

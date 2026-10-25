@@ -13,7 +13,7 @@ by URL.
 
 | Layout                | Implemented | Rust type                     |
 | --------------------- | ----------- | ----------------------------- |
-| Column                | ✅ (M1.2)   | `ColumnTable`                 |
+| Column                | ✅ (M1.2, M2.2 row labels) | `ColumnTable`     |
 | XY                    | ✅ (M2.1)   | `XyTable`                     |
 | Grouped               | planned     | —                             |
 | Contingency           | planned     | —                             |
@@ -54,6 +54,23 @@ with each format cited to its manual page.
 
 ## Column tables (`ColumnTable`)
 
-Titled columns of `Option<f64>` cells, one replicate per cell. The
-subcolumn-per-group widening (Prism's "Column" layout proper, which
-accepts multiple replicates per group) is M2.2.
+Each column is one group; its cells are the group's replicate
+observations top-down. Columns may be ragged (one group may have more
+replicates than another). `None` cells represent missing values and
+are skipped by analyses.
+
+- `row_titles: Vec<String>` — optional per-row labels. Empty means
+  "address rows by their 1-based index"; otherwise the length must
+  match the longest column (`row_titles_valid()`).
+- `group_values(col)` — iterator of non-missing `f64` for one group.
+- `group_n(col)` — replicate count after missing-value filtering.
+
+The subcolumn-per-group concept belongs to Grouped tables (M2.3), not
+Column tables. One sample value per cell is correct for a Column
+table.
+
+## Typed container (`AnyTable`)
+
+Documents store tables as `Vec<AnyTable>` with a serde `"kind"`
+discriminator (`"column"`, `"xy"`, …). Round-trip tested at the
+document level in `graphcraft_format`.

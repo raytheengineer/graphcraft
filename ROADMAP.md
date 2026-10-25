@@ -46,7 +46,10 @@ for everything after.
 - [x] M2.1 — XY table (`graphcraft_table::XyTable`, `YFormat`
       {SingleY, Replicates, MeanSd, MeanSem}, structural validation,
       JSON round-trip)
-- [ ] M2.2 — Column table proper (subcolumn-per-group widening)
+- [x] M2.2 — Column table proper: row-label metadata, group-value
+      helpers, and a typed `AnyTable` container (`kind`-tagged serde
+      enum) so `Document.tables` is `Vec<AnyTable>` instead of
+      untyped JSON values.
 - [ ] M2.3 — Grouped
 - [ ] M2.4 — Contingency
 - [ ] M2.5 — Survival

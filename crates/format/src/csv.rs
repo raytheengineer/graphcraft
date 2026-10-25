@@ -65,13 +65,13 @@ pub fn import_csv(bytes: &[u8]) -> Result<Document, FormatError> {
 
     let table = ColumnTable {
         title: String::new(),
+        row_titles: Vec::new(),
         columns,
     };
-    let table_value = serde_json::to_value(&table)?;
     Ok(Document {
         format: FORMAT_TAG.to_string(),
         version: FORMAT_VERSION,
-        tables: vec![table_value],
+        tables: vec![table.into()],
         analyses: Vec::new(),
         graphs: Vec::new(),
         layouts: Vec::new(),
@@ -143,7 +143,10 @@ mod tests {
     use super::*;
 
     fn table_of(doc: &Document) -> ColumnTable {
-        serde_json::from_value(doc.tables[0].clone()).unwrap()
+        match &doc.tables[0] {
+            graphcraft_table::AnyTable::Column(c) => c.clone(),
+            other => panic!("expected Column table, got {other:?}"),
+        }
     }
 
     #[test]
