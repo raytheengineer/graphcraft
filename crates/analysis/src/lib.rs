@@ -5,7 +5,9 @@
 //! harness in `tests/parity.rs` consumes `tests/parity-matrix.csv`
 //! to drive output-parity acceptance tests.
 
+pub mod graph;
 pub mod project;
+pub use graph::{add_graph_sheet, build_graph_scene, GraphError};
 pub use project::{add_analysis_sheet, run_analysis, AnalysisError};
 
 use graphcraft_numeric::NumericError;

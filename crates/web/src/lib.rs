@@ -215,6 +215,9 @@ fn load(csv: &str) -> Result<ColumnTable, String> {
         Some(SheetBody::Analysis { .. }) => {
             Err("expected a Data sheet, got an Analysis sheet".to_string())
         }
+        Some(SheetBody::Graph { .. }) => {
+            Err("expected a Data sheet, got a Graph sheet".to_string())
+        }
         None => Err("empty project".to_string()),
     }
 }

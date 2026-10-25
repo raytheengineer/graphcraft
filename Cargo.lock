@@ -77,6 +77,7 @@ version = "0.0.1"
 dependencies = [
  "graphcraft_format",
  "graphcraft_numeric",
+ "graphcraft_plot",
  "graphcraft_regression",
  "graphcraft_stats",
  "graphcraft_table",

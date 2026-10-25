@@ -47,9 +47,9 @@ pub struct Sheet {
     pub body: SheetBody,
 }
 
-/// What a sheet actually holds. New variants (Graph, Layout) land
-/// in later M8 slices; the serde tag keeps old files forward-
-/// readable.
+/// What a sheet actually holds. The Layout variant lands in a
+/// later M8 slice; the serde tag keeps old files forward-readable
+/// as we grow the enum.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SheetBody {
@@ -75,6 +75,110 @@ pub enum SheetBody {
         #[serde(default)]
         source_hash: Option<String>,
     },
+    /// A graph bound to a data sheet. The scene is derived from
+    /// `(source, spec)` on demand — not stored in the file — so
+    /// opening a project doesn't duplicate pixel coordinates.
+    Graph {
+        source: SheetId,
+        spec: GraphSpec,
+        /// Content hash of the source table at the last build.
+        /// `None` means the graph was never built or came from an
+        /// older file.
+        #[serde(default)]
+        source_hash: Option<String>,
+    },
+}
+
+/// Which graph to build from a data sheet.
+///
+/// Column references are strings interpreted at run time as either
+/// a 0-based index or the exact header name (matching the CLI /
+/// MCP / Analysis convention).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum GraphSpec {
+    /// Scatter of two columns from a Column data sheet.
+    Xy {
+        x: String,
+        y: String,
+        #[serde(default)]
+        title: Option<String>,
+    },
+    /// One bar per non-empty column of a Column data sheet.
+    Column {
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        error_bars: GraphErrorBars,
+        #[serde(default)]
+        y_title: Option<String>,
+    },
+    /// Grouped bars from a Grouped data sheet (dispatch returns an
+    /// error on a Column source until Grouped data sheets land).
+    Grouped {
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        error_bars: GraphErrorBars,
+    },
+    /// Kaplan–Meier curves from a Survival data sheet.
+    Survival {
+        #[serde(default)]
+        title: Option<String>,
+    },
+    /// Heatmap over the cells of a Column data sheet treated as a
+    /// row-major matrix (one row per data row, one column per
+    /// column of the sheet).
+    Heatmap {
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        colormap: GraphColormap,
+    },
+}
+
+impl GraphSpec {
+    pub fn id(&self) -> &'static str {
+        match self {
+            Self::Xy { .. } => "xy",
+            Self::Column { .. } => "column",
+            Self::Grouped { .. } => "grouped",
+            Self::Survival { .. } => "survival",
+            Self::Heatmap { .. } => "heatmap",
+        }
+    }
+
+    pub fn default_title(&self) -> String {
+        match self {
+            Self::Xy { x, y, .. } => format!("Scatter: {y} vs {x}"),
+            Self::Column { .. } => "Column plot".to_string(),
+            Self::Grouped { .. } => "Grouped plot".to_string(),
+            Self::Survival { .. } => "Survival curves".to_string(),
+            Self::Heatmap { .. } => "Heatmap".to_string(),
+        }
+    }
+}
+
+/// Error-bar choice for Column / Grouped graphs. Matches the plot
+/// layer's `ColumnErrorBars` / `GroupedErrorBars` by value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum GraphErrorBars {
+    None,
+    #[default]
+    Sd,
+    Sem,
+}
+
+/// Colormap for a heatmap graph. Matches the plot layer's
+/// `Colormap` by value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum GraphColormap {
+    #[default]
+    DivergingBlueRed,
+    Grayscale,
+    SequentialBlue,
 }
 
 /// Which analysis to run, along with its parameters.
@@ -192,6 +296,14 @@ impl Project {
         self.sheets
             .iter()
             .filter(|s| matches!(s.body, SheetBody::Analysis { .. }))
+            .count()
+    }
+
+    /// Count sheets whose body is a Graph sheet.
+    pub fn graph_sheet_count(&self) -> usize {
+        self.sheets
+            .iter()
+            .filter(|s| matches!(s.body, SheetBody::Graph { .. }))
             .count()
     }
 
