@@ -6,10 +6,20 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "L6: egui panels and theme tokens."
+description = "L6: GraphCraft UI implemented in egui. Shared between the desktop app and the eframe-web runner."
 
 [dependencies]
+graphcraft_analysis = { path = "../analysis" }
 graphcraft_engine = { path = "../engine" }
+graphcraft_format = { path = "../format" }
+graphcraft_plot = { path = "../plot" }
+graphcraft_regression = { path = "../regression" }
+graphcraft_render = { path = "../render" }
+graphcraft_stats = { path = "../stats" }
+graphcraft_table = { path = "../table" }
+egui = { workspace = true }
+egui_extras = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

@@ -6,11 +6,18 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "GraphCraft desktop app (stub for M1)."
+description = "GraphCraft — native desktop app (eframe + egui + wgpu with glow fallback)."
+
+[features]
+default = ["wgpu"]
+wgpu = ["eframe/wgpu"]
+glow = ["eframe/glow"]
 
 [dependencies]
 graphcraft_engine = { path = "../../crates/engine" }
 graphcraft_ui_egui = { path = "../../crates/ui-egui" }
+eframe = { workspace = true, features = ["default_fonts", "wayland", "x11"] }
+egui = { workspace = true }
 
 [[bin]]
 name = "graphcraft"
