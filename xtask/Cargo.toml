@@ -1,0 +1,17 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+description = "Project tasks: fmt, clippy, test, layers, cleanroom, assets, wasm, ci."
+
+[dependencies]
+anyhow = { workspace = true }
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"

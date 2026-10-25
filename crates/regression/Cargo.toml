@@ -1,0 +1,16 @@
+[package]
+name = "graphcraft_regression"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "L3: linear and nonlinear regression."
+
+[dependencies]
+graphcraft_numeric = { path = "../numeric" }
+graphcraft_stats = { path = "../stats" }
+
+[lints]
+workspace = true

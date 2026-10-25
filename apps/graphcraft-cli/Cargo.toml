@@ -1,0 +1,21 @@
+[package]
+name = "graphcraft-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "GraphCraft command-line tool."
+
+[dependencies]
+graphcraft_engine = { path = "../../crates/engine" }
+graphcraft_format = { path = "../../crates/format" }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "graphcraft-cli"
+path = "src/main.rs"
+
+[lints]
+workspace = true

@@ -1,0 +1,15 @@
+[package]
+name = "graphcraft_plot"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "L4: scene graph for graphs (axes, series, legends, annotations)."
+
+[dependencies]
+graphcraft_table = { path = "../table" }
+
+[lints]
+workspace = true

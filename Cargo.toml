@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/numeric",
+    "crates/stats",
+    "crates/regression",
+    "crates/table",
+    "crates/analysis",
+    "crates/plot",
+    "crates/render",
+    "crates/format",
+    "crates/engine",
+    "crates/ui-egui",
+    "apps/graphcraft",
+    "apps/graphcraft-cli",
+    "xtask",
+]
+default-members = [
+    "crates/numeric",
+    "crates/stats",
+    "crates/regression",
+    "crates/table",
+    "crates/analysis",
+    "crates/plot",
+    "crates/render",
+    "crates/format",
+    "crates/engine",
+    "apps/graphcraft-cli",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/raytheengineer/graphcraft"
+authors = ["GraphCraft contributors"]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# No-panic policy: ban panic paths in shipped code.
+# Tests re-enable with #![allow(...)] or #[cfg(test)].
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+todo = "deny"
+unimplemented = "deny"
+indexing_slicing = "warn"
+integer_division = "warn"
+dbg_macro = "warn"
+print_stdout = "allow"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+anyhow = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

@@ -1,0 +1,15 @@
+[package]
+name = "graphcraft_render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "L5: rasterizer and SVG/PDF writer."
+
+[dependencies]
+graphcraft_plot = { path = "../plot" }
+
+[lints]
+workspace = true

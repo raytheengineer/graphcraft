@@ -1,0 +1,3 @@
+analysis,dataset,statistic,expected,max_relative_error,source_url
+mean,inline:1;2;3;4;5,mean,3.0,1e-15,textbook:arithmetic-mean
+sum,inline:1;2;3;4;5,sum,15.0,1e-15,textbook:arithmetic-sum

@@ -1,0 +1,20 @@
+[package]
+name = "graphcraft"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "GraphCraft desktop app (stub for M1)."
+
+[dependencies]
+graphcraft_engine = { path = "../../crates/engine" }
+graphcraft_ui_egui = { path = "../../crates/ui-egui" }
+
+[[bin]]
+name = "graphcraft"
+path = "src/main.rs"
+
+[lints]
+workspace = true

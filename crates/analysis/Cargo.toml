@@ -1,0 +1,21 @@
+[package]
+name = "graphcraft_analysis"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "L4: analysis definitions, inputs, options, results tree."
+
+[dependencies]
+graphcraft_numeric = { path = "../numeric" }
+graphcraft_stats = { path = "../stats" }
+graphcraft_regression = { path = "../regression" }
+graphcraft_table = { path = "../table" }
+
+[dev-dependencies]
+graphcraft_numeric = { path = "../numeric" }
+
+[lints]
+workspace = true

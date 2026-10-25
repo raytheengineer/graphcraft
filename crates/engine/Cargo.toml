@@ -1,0 +1,24 @@
+[package]
+name = "graphcraft_engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "L5: commands, undo, document, panic guard, control channel."
+
+[dependencies]
+graphcraft_numeric = { path = "../numeric" }
+graphcraft_stats = { path = "../stats" }
+graphcraft_table = { path = "../table" }
+graphcraft_analysis = { path = "../analysis" }
+graphcraft_plot = { path = "../plot" }
+graphcraft_format = { path = "../format" }
+graphcraft_render = { path = "../render" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
