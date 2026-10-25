@@ -16,7 +16,7 @@ by URL.
 | Column                | ✅ (M1.2, M2.2 row labels) | `ColumnTable`     |
 | XY                    | ✅ (M2.1)   | `XyTable`                     |
 | Grouped               | ✅ (M2.3)   | `GroupedTable`                |
-| Contingency           | planned     | —                             |
+| Contingency           | ✅ (M2.4)   | `ContingencyTable`            |
 | Survival              | planned     | —                             |
 | Parts-of-whole        | planned     | —                             |
 | Multiple-variables    | planned     | —                             |
@@ -87,6 +87,19 @@ three-way ANOVA, and the Grouped bar/scatter plots.
   `replicate_n(row, group)`.
 - Validation (`validate()`) rejects ragged groups and
   `row_titles`-length mismatches.
+
+## Contingency tables (`ContingencyTable`)
+
+A small rectangular matrix of non-negative integer counts
+(`Vec<Vec<u64>>`, row-major), with optional row and column titles.
+Powers chi-square (independence and goodness-of-fit), Fisher's exact
+test, and relative-risk / odds-ratio analyses.
+
+- `cell(row, col)`, `row_total(row)`, `col_total(col)`, `total()`.
+- `validate()` rejects ragged rows, title-length mismatches, and
+  the degenerate case of a zero grand total.
+- Counts are `u64` (not `f64`) so a value error at import time is a
+  structural rejection rather than a silent reinterpretation.
 
 ## Typed container (`AnyTable`)
 

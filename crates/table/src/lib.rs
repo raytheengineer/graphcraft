@@ -450,6 +450,139 @@ impl GroupedTable {
     }
 }
 
+// -------- Contingency tables -----------------------------------------
+//
+// Prism's Contingency layout: a small rectangular table of
+// non-negative integer counts, with row and column titles. Powers
+// chi-square (independence and goodness-of-fit), Fisher's exact test,
+// and relative-risk / odds-ratio analyses.
+//
+// Reference (public manual, "Contingency tables"):
+//   https://www.graphpad.com/guides/prism/latest/user-guide/
+
+/// Reason a [`ContingencyTable`] fails [`ContingencyTable::validate`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContingencyError {
+    /// A row has a different column count from the first row.
+    Ragged {
+        row: usize,
+        expected: usize,
+        got: usize,
+    },
+    /// `row_titles` is non-empty and doesn't match row count.
+    RowTitlesMismatch { expected: usize, got: usize },
+    /// `column_titles` is non-empty and doesn't match column count.
+    ColumnTitlesMismatch { expected: usize, got: usize },
+    /// All counts are zero — chi-square and company are undefined.
+    ZeroTotal,
+}
+
+impl std::fmt::Display for ContingencyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ContingencyError::Ragged { row, expected, got } => write!(
+                f,
+                "contingency row {row}: has {got} columns but table has {expected}"
+            ),
+            ContingencyError::RowTitlesMismatch { expected, got } => write!(
+                f,
+                "row_titles has {got} entries but table has {expected} rows"
+            ),
+            ContingencyError::ColumnTitlesMismatch { expected, got } => write!(
+                f,
+                "column_titles has {got} entries but table has {expected} columns"
+            ),
+            ContingencyError::ZeroTotal => f.write_str("contingency table total is zero"),
+        }
+    }
+}
+
+impl std::error::Error for ContingencyError {}
+
+/// A contingency table: non-negative integer counts stored row-major.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContingencyTable {
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub row_titles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub column_titles: Vec<String>,
+    /// `counts[row][col]`.
+    pub counts: Vec<Vec<u64>>,
+}
+
+impl ContingencyTable {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            row_titles: Vec::new(),
+            column_titles: Vec::new(),
+            counts: Vec::new(),
+        }
+    }
+
+    pub fn kind(&self) -> TableKind {
+        TableKind::Contingency
+    }
+
+    pub fn rows(&self) -> usize {
+        self.counts.len()
+    }
+
+    pub fn cols(&self) -> usize {
+        self.counts.first().map_or(0, |r| r.len())
+    }
+
+    pub fn cell(&self, row: usize, col: usize) -> Option<u64> {
+        self.counts.get(row)?.get(col).copied()
+    }
+
+    pub fn row_total(&self, row: usize) -> u64 {
+        self.counts.get(row).map_or(0, |r| r.iter().copied().sum())
+    }
+
+    pub fn col_total(&self, col: usize) -> u64 {
+        self.counts
+            .iter()
+            .map(|r| r.get(col).copied().unwrap_or(0))
+            .sum()
+    }
+
+    pub fn total(&self) -> u64 {
+        self.counts.iter().flatten().copied().sum()
+    }
+
+    pub fn validate(&self) -> Result<(), ContingencyError> {
+        let cols = self.cols();
+        for (i, row) in self.counts.iter().enumerate().skip(1) {
+            if row.len() != cols {
+                return Err(ContingencyError::Ragged {
+                    row: i,
+                    expected: cols,
+                    got: row.len(),
+                });
+            }
+        }
+        let r = self.rows();
+        if !self.row_titles.is_empty() && self.row_titles.len() != r {
+            return Err(ContingencyError::RowTitlesMismatch {
+                expected: r,
+                got: self.row_titles.len(),
+            });
+        }
+        if !self.column_titles.is_empty() && self.column_titles.len() != cols {
+            return Err(ContingencyError::ColumnTitlesMismatch {
+                expected: cols,
+                got: self.column_titles.len(),
+            });
+        }
+        if self.total() == 0 {
+            return Err(ContingencyError::ZeroTotal);
+        }
+        Ok(())
+    }
+}
+
 // -------- AnyTable (typed container) ---------------------------------
 //
 // Documents hold a heterogenous list of tables (an experiment may mix
@@ -466,6 +599,7 @@ pub enum AnyTable {
     Column(ColumnTable),
     Xy(XyTable),
     Grouped(GroupedTable),
+    Contingency(ContingencyTable),
 }
 
 impl AnyTable {
@@ -474,6 +608,7 @@ impl AnyTable {
             AnyTable::Column(_) => TableKind::Column,
             AnyTable::Xy(_) => TableKind::Xy,
             AnyTable::Grouped(_) => TableKind::Grouped,
+            AnyTable::Contingency(_) => TableKind::Contingency,
         }
     }
 }
@@ -493,6 +628,12 @@ impl From<XyTable> for AnyTable {
 impl From<GroupedTable> for AnyTable {
     fn from(t: GroupedTable) -> Self {
         AnyTable::Grouped(t)
+    }
+}
+
+impl From<ContingencyTable> for AnyTable {
+    fn from(t: ContingencyTable) -> Self {
+        AnyTable::Contingency(t)
     }
 }
 
@@ -825,6 +966,92 @@ mod tests {
         let t: AnyTable = sample_grouped().into();
         let json = serde_json::to_string(&t).unwrap();
         assert!(json.contains("\"kind\":\"grouped\""), "got {json}");
+        let back: AnyTable = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, back);
+    }
+
+    fn sample_contingency() -> ContingencyTable {
+        // Classic 2x2: exposure x disease.
+        ContingencyTable {
+            title: "exposure vs disease".into(),
+            row_titles: vec!["Exposed".into(), "Unexposed".into()],
+            column_titles: vec!["Disease".into(), "No disease".into()],
+            counts: vec![vec![30, 70], vec![10, 90]],
+        }
+    }
+
+    #[test]
+    fn contingency_shape_and_totals() {
+        let t = sample_contingency();
+        assert_eq!(t.kind(), TableKind::Contingency);
+        assert_eq!(t.rows(), 2);
+        assert_eq!(t.cols(), 2);
+        assert_eq!(t.cell(0, 0), Some(30));
+        assert_eq!(t.cell(1, 1), Some(90));
+        assert_eq!(t.cell(5, 5), None);
+        assert_eq!(t.row_total(0), 100);
+        assert_eq!(t.row_total(1), 100);
+        assert_eq!(t.col_total(0), 40);
+        assert_eq!(t.col_total(1), 160);
+        assert_eq!(t.total(), 200);
+        t.validate().unwrap();
+    }
+
+    #[test]
+    fn contingency_ragged_rejected() {
+        let mut t = sample_contingency();
+        t.counts[1].push(5);
+        assert!(matches!(
+            t.validate().unwrap_err(),
+            ContingencyError::Ragged {
+                row: 1,
+                expected: 2,
+                got: 3
+            }
+        ));
+    }
+
+    #[test]
+    fn contingency_zero_total_rejected() {
+        let t = ContingencyTable {
+            title: "".into(),
+            row_titles: Vec::new(),
+            column_titles: Vec::new(),
+            counts: vec![vec![0, 0], vec![0, 0]],
+        };
+        assert!(matches!(
+            t.validate().unwrap_err(),
+            ContingencyError::ZeroTotal
+        ));
+    }
+
+    #[test]
+    fn contingency_title_length_mismatches_rejected() {
+        let mut t = sample_contingency();
+        t.row_titles.pop();
+        assert!(matches!(
+            t.validate().unwrap_err(),
+            ContingencyError::RowTitlesMismatch {
+                expected: 2,
+                got: 1
+            }
+        ));
+        let mut t = sample_contingency();
+        t.column_titles.push("extra".into());
+        assert!(matches!(
+            t.validate().unwrap_err(),
+            ContingencyError::ColumnTitlesMismatch {
+                expected: 2,
+                got: 3
+            }
+        ));
+    }
+
+    #[test]
+    fn contingency_round_trip_as_any_table() {
+        let t: AnyTable = sample_contingency().into();
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(json.contains("\"kind\":\"contingency\""), "got {json}");
         let back: AnyTable = serde_json::from_str(&json).unwrap();
         assert_eq!(t, back);
     }

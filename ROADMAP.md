@@ -53,7 +53,8 @@ for everything after.
 - [x] M2.3 — Grouped (`GroupedTable`, `GroupColumn`, cell /
       replicates-at / replicate_n helpers, rectangular-within-group
       validation, `AnyTable::Grouped` round-trip)
-- [ ] M2.4 — Contingency
+- [x] M2.4 — Contingency (`ContingencyTable`, row-major u64 counts,
+      row/col totals, validate, `AnyTable::Contingency` round-trip)
 - [ ] M2.5 — Survival
 - [ ] M2.6 — Parts-of-whole / Multiple-variables / Nested
 ### M3 — Descriptive + t-tests + 1-way ANOVA + non-parametric
