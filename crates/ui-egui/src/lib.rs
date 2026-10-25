@@ -12,42 +12,76 @@
 
 pub mod scene_painter;
 
-/// File-system backend injected by the host app. The desktop
-/// binary wires rfd into this; the web runner will wire the
-/// browser's download/upload path (M9.8). The UI calls these
-/// methods on button click — never spawns I/O itself — so the
-/// `wasm32` build stays I/O-free.
-pub trait FileService: Send + Sync {
-    /// Prompt the user to pick a `.graphcraft` file to open.
-    /// Returns the file bytes on success, `None` on cancel, or an
-    /// error string if the pick/read failed.
-    fn pick_open_graphcraft(&self) -> Result<Option<Vec<u8>>, String>;
+use std::sync::{Arc, Mutex};
 
-    /// Prompt the user to save `bytes` as a `.graphcraft` file.
-    /// `default_name` is a sensible filename without extension.
-    /// Returns the written path (for the UI to display) or `None`
-    /// on cancel.
-    fn pick_save_graphcraft(
-        &self,
-        default_name: &str,
-        bytes: &[u8],
-    ) -> Result<Option<String>, String>;
+/// Fire-and-forget file-service backend. The UI never blocks on
+/// I/O: a button click asks the service to open or save, and the
+/// service posts the result (or an error) to the shared
+/// [`FileInbox`]. Each frame the UI drains the inbox and routes
+/// events. This keeps the API identical on native (sync rfd +
+/// std::fs) and web (async rfd / `bytes_async`).
+pub trait FileService: Send + Sync {
+    /// Prompt the user to pick a `.graphcraft` file. The service
+    /// pushes `InboxEvent::LoadGraphcraft { bytes, label }` on
+    /// success, or `InboxEvent::Status` on error.
+    fn open_project(&self, inbox: &FileInbox);
+
+    /// Save `bytes` as a `.graphcraft` file. `default_name` is a
+    /// filename stem without extension.
+    fn save_project(&self, default_name: &str, bytes: Vec<u8>, inbox: &FileInbox);
 }
 
-/// Fallback used when the host didn't inject a service. Every
-/// method says "no backend" so the UI still works offline.
+/// Fallback used when the host didn't inject a service.
 pub struct NoFileService;
 impl FileService for NoFileService {
-    fn pick_open_graphcraft(&self) -> Result<Option<Vec<u8>>, String> {
-        Err("no file backend wired in this build".into())
+    fn open_project(&self, inbox: &FileInbox) {
+        inbox.push(InboxEvent::Status(
+            "no file backend wired in this build".into(),
+        ));
     }
-    fn pick_save_graphcraft(
-        &self,
-        _default_name: &str,
-        _bytes: &[u8],
-    ) -> Result<Option<String>, String> {
-        Err("no file backend wired in this build".into())
+    fn save_project(&self, _default_name: &str, _bytes: Vec<u8>, inbox: &FileInbox) {
+        inbox.push(InboxEvent::Status(
+            "no file backend wired in this build".into(),
+        ));
     }
+}
+
+/// Message queue from the file backend (and from async drop
+/// readers) back to the UI. Clone the handle, hand it to a
+/// spawned task, push events — the UI drains on every frame.
+#[derive(Clone, Default)]
+pub struct FileInbox {
+    queue: Arc<Mutex<Vec<InboxEvent>>>,
+}
+
+impl FileInbox {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn push(&self, event: InboxEvent) {
+        if let Ok(mut q) = self.queue.lock() {
+            q.push(event);
+        }
+    }
+
+    pub fn drain(&self) -> Vec<InboxEvent> {
+        self.queue
+            .lock()
+            .map(|mut q| std::mem::take(&mut *q))
+            .unwrap_or_default()
+    }
+}
+
+/// Event posted to the UI by async file operations.
+#[derive(Debug, Clone)]
+pub enum InboxEvent {
+    /// `.graphcraft` bytes to parse into a Project.
+    LoadGraphcraft { bytes: Vec<u8>, label: String },
+    /// CSV bytes to import as a new Data sheet.
+    ImportCsv { bytes: Vec<u8>, title: String },
+    /// Human-readable status update (success or failure).
+    Status(String),
 }
 
 use egui::{Color32, ComboBox, Modal, Panel, RichText, ScrollArea, TextEdit, Ui};
@@ -72,6 +106,8 @@ pub struct AppState {
     configure: ConfigureGraphForm,
     /// File backend injected by the host app.
     files: Box<dyn FileService>,
+    /// Shared inbox for file-service results and async drop reads.
+    pub inbox: FileInbox,
     /// Currently-editing data cell, if any.
     editing: Option<EditingCell>,
     /// Currently-editing column header, if any.
@@ -128,6 +164,7 @@ impl AppState {
             modal: ModalKind::None,
             configure: ConfigureGraphForm::default(),
             files,
+            inbox: FileInbox::new(),
             editing: None,
             editing_header: None,
         }
@@ -238,6 +275,7 @@ impl GraphKindChoice {
 impl AppState {
     /// Draw one frame into the given root UI.
     pub fn ui(&mut self, ui: &mut Ui) {
+        self.drain_inbox();
         self.absorb_dropped_files(ui);
         Panel::top("gc-top").show(ui, |ui| self.top_bar(ui));
         Panel::left("gc-sidebar")
@@ -249,10 +287,9 @@ impl AppState {
         self.render_modal(ui);
     }
 
-    /// Drain egui's dropped-files queue. Any `.csv` becomes a new
-    /// Data+Placeholder-Graph pair (Column shape by default); any
-    /// `.graphcraft` replaces the open project. Unknown extensions
-    /// are ignored with a status line.
+    /// Drain egui's dropped-files queue. Reads are sync on native
+    /// and async on web; both post results into `self.inbox`,
+    /// which `drain_inbox` picks up on the next frame.
     fn absorb_dropped_files(&mut self, ui: &mut Ui) {
         let dropped = ui.ctx().input(|i| i.raw.dropped_files.clone());
         if dropped.is_empty() {
@@ -264,33 +301,28 @@ impl AppState {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| path.display().to_string());
+
             #[cfg(not(target_arch = "wasm32"))]
-            let bytes = match f.bytes() {
-                Ok(b) => b,
-                Err(e) => {
-                    self.status_line = format!("couldn't read {name}: {e}");
-                    continue;
+            {
+                match f.bytes() {
+                    Ok(bytes) => dispatch_dropped_bytes(&self.inbox, &name, bytes),
+                    Err(e) => self
+                        .inbox
+                        .push(InboxEvent::Status(format!("couldn't read {name}: {e}"))),
                 }
-            };
+            }
             #[cfg(target_arch = "wasm32")]
             {
-                // Browser drops need an async read; a dedicated
-                // bridge lands in a follow-up slice.
-                let _ = f;
-                self.status_line = format!("drop of {name}: async web drops come in a follow-up");
-                continue;
-            }
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                let lower = name.to_lowercase();
-                if lower.ends_with(".graphcraft") || lower.ends_with(".json") {
-                    self.try_load_bytes(&bytes, &name);
-                } else if lower.ends_with(".csv") || !lower.contains('.') {
-                    let title = name.trim_end_matches(".csv").to_string();
-                    self.import_csv_into_project(&bytes, &title);
-                } else {
-                    self.status_line = format!("ignored {name}: unknown extension");
-                }
+                let inbox = self.inbox.clone();
+                let name_async = name.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    match f.bytes_async().await {
+                        Ok(bytes) => dispatch_dropped_bytes(&inbox, &name_async, bytes),
+                        Err(e) => inbox.push(InboxEvent::Status(format!(
+                            "couldn't read {name_async}: {e}"
+                        ))),
+                    }
+                });
             }
         }
     }
@@ -1105,11 +1137,7 @@ impl AppState {
     // ---------------------------------------------------------------
 
     fn handle_open(&mut self) {
-        match self.files.pick_open_graphcraft() {
-            Ok(Some(bytes)) => self.try_load_bytes(&bytes, "project"),
-            Ok(None) => {} // user cancelled; keep status quiet
-            Err(e) => self.status_line = format!("open failed: {e}"),
-        }
+        self.files.open_project(&self.inbox);
     }
 
     fn handle_save(&mut self) {
@@ -1122,10 +1150,23 @@ impl AppState {
             }
         };
         let default_name = sanitize_filename(&self.project.title);
-        match self.files.pick_save_graphcraft(&default_name, &bytes) {
-            Ok(Some(path)) => self.status_line = format!("saved to {path}"),
-            Ok(None) => {} // cancelled
-            Err(e) => self.status_line = format!("save failed: {e}"),
+        self.files.save_project(&default_name, bytes, &self.inbox);
+    }
+
+    /// Drain any pending file-service / drop events and route
+    /// them through the normal project mutation paths.
+    fn drain_inbox(&mut self) {
+        let events = self.inbox.drain();
+        for ev in events {
+            match ev {
+                InboxEvent::LoadGraphcraft { bytes, label } => {
+                    self.try_load_bytes(&bytes, &label);
+                }
+                InboxEvent::ImportCsv { bytes, title } => {
+                    self.import_csv_into_project(&bytes, &title);
+                }
+                InboxEvent::Status(s) => self.status_line = s,
+            }
         }
     }
 
@@ -1621,6 +1662,24 @@ fn colormap_label(c: GraphColormap) -> &'static str {
         GraphColormap::DivergingBlueRed => "Blue → red",
         GraphColormap::Grayscale => "Grayscale",
         GraphColormap::SequentialBlue => "Sequential blue",
+    }
+}
+
+/// Classify a dropped file by name and post the right event.
+fn dispatch_dropped_bytes(inbox: &FileInbox, name: &str, bytes: Vec<u8>) {
+    let lower = name.to_lowercase();
+    if lower.ends_with(".graphcraft") || lower.ends_with(".json") {
+        inbox.push(InboxEvent::LoadGraphcraft {
+            bytes,
+            label: name.to_string(),
+        });
+    } else if lower.ends_with(".csv") || !lower.contains('.') {
+        let title = name.trim_end_matches(".csv").to_string();
+        inbox.push(InboxEvent::ImportCsv { bytes, title });
+    } else {
+        inbox.push(InboxEvent::Status(format!(
+            "ignored {name}: unknown extension"
+        )));
     }
 }
 

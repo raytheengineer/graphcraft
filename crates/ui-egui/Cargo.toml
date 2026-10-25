@@ -21,5 +21,8 @@ egui = { workspace = true }
 egui_extras = { workspace = true }
 serde_json = { workspace = true }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+
 [lints]
 workspace = true

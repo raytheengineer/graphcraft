@@ -1034,6 +1034,7 @@ dependencies = [
  "graphcraft_ui_egui",
  "js-sys",
  "log",
+ "rfd",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -1137,6 +1138,7 @@ dependencies = [
  "graphcraft_stats",
  "graphcraft_table",
  "serde_json",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]

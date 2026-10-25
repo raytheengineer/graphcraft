@@ -20,6 +20,7 @@ graphcraft_ui_egui = { path = "../../crates/ui-egui" }
 eframe = { workspace = true, features = ["default_fonts", "wgpu"] }
 egui = { workspace = true }
 log = "0.4"
+rfd = { workspace = true }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"

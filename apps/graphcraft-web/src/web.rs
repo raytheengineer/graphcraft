@@ -1,7 +1,7 @@
 #![cfg(target_arch = "wasm32")]
 //! wasm32-only entry point for the eframe-web runner.
 
-use graphcraft_ui_egui::{AppState, FileService};
+use graphcraft_ui_egui::{AppState, FileInbox, FileService, InboxEvent};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -9,8 +9,6 @@ use wasm_bindgen::JsCast;
 /// `<canvas>` element.
 #[wasm_bindgen]
 pub async fn start(canvas_id: String) -> Result<(), JsValue> {
-    // Pipe Rust logs through console.log so build-time panics
-    // show up in DevTools.
     eframe::WebLogger::init(log::LevelFilter::Info).ok();
 
     let document = web_sys::window()
@@ -51,22 +49,39 @@ impl eframe::App for WebApp {
     }
 }
 
-/// Browser-side `FileService`. Save produces a download; Open
-/// relies on drag-drop (the user drops the file onto the canvas
-/// — egui's `dropped_files` queue already handles that path).
+/// Browser-side `FileService`.
+///
+/// Open spawns `rfd::AsyncFileDialog`; the chosen file's bytes
+/// arrive asynchronously and the service posts them to the inbox
+/// for the UI to pick up on its next frame.
+///
+/// Save triggers a browser download by building a Blob and
+/// clicking a hidden anchor.
 struct BrowserFileService;
 
 impl FileService for BrowserFileService {
-    fn pick_open_graphcraft(&self) -> Result<Option<Vec<u8>>, String> {
-        Err("drop a .graphcraft file onto the window to open it".to_string())
+    fn open_project(&self, inbox: &FileInbox) {
+        let inbox = inbox.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let dialog = rfd::AsyncFileDialog::new()
+                .set_title("Open GraphCraft project")
+                .add_filter("GraphCraft project", &["graphcraft", "json"]);
+            match dialog.pick_file().await {
+                Some(handle) => {
+                    let name = handle.file_name();
+                    let bytes = handle.read().await;
+                    inbox.push(InboxEvent::LoadGraphcraft { bytes, label: name });
+                }
+                None => {}
+            }
+        });
     }
 
-    fn pick_save_graphcraft(
-        &self,
-        default_name: &str,
-        bytes: &[u8],
-    ) -> Result<Option<String>, String> {
-        download_blob(default_name, bytes).map(Some)
+    fn save_project(&self, default_name: &str, bytes: Vec<u8>, inbox: &FileInbox) {
+        match download_blob(default_name, &bytes) {
+            Ok(filename) => inbox.push(InboxEvent::Status(format!("saved {filename}"))),
+            Err(e) => inbox.push(InboxEvent::Status(format!("save failed: {e}"))),
+        }
     }
 }
 
@@ -75,8 +90,6 @@ fn download_blob(name: &str, bytes: &[u8]) -> Result<String, String> {
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
     let document = window.document().ok_or_else(|| "no document".to_string())?;
 
-    // Build a Uint8Array (then wrap in a JS array) so Blob sees
-    // the bytes.
     let u8 = js_sys::Uint8Array::new_with_length(bytes.len() as u32);
     u8.copy_from(bytes);
     let parts = js_sys::Array::new();
