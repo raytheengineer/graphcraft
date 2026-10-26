@@ -189,6 +189,7 @@ enum ModalKind {
         x: String,
         y: String,
         col: String,
+        model_id: FitModelChoice,
     },
     AddGraph {
         source: Option<SheetId>,
@@ -245,10 +246,11 @@ enum AnalysisKindChoice {
     GroupedOneWayAnova,
     LogRank,
     ChiSquare,
+    NonlinearFit,
 }
 
 impl AnalysisKindChoice {
-    const ALL: [Self; 9] = [
+    const ALL: [Self; 10] = [
         Self::Descriptives,
         Self::OneWayAnova,
         Self::WelchT,
@@ -258,6 +260,7 @@ impl AnalysisKindChoice {
         Self::GroupedOneWayAnova,
         Self::LogRank,
         Self::ChiSquare,
+        Self::NonlinearFit,
     ];
     fn label(self) -> &'static str {
         match self {
@@ -270,6 +273,49 @@ impl AnalysisKindChoice {
             Self::GroupedOneWayAnova => "One-way ANOVA (grouped data)",
             Self::LogRank => "Log-rank (survival)",
             Self::ChiSquare => "Chi-squared / Fisher (contingency)",
+            Self::NonlinearFit => "Non-linear curve fit (LM)",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+enum FitModelChoice {
+    #[default]
+    OneSiteBinding,
+    HillBinding,
+    ExpDecay,
+    ExpGrowth,
+    LogDoseResponse,
+    Line,
+}
+
+impl FitModelChoice {
+    const ALL: [Self; 6] = [
+        Self::OneSiteBinding,
+        Self::HillBinding,
+        Self::ExpDecay,
+        Self::ExpGrowth,
+        Self::LogDoseResponse,
+        Self::Line,
+    ];
+    fn id(self) -> &'static str {
+        match self {
+            Self::OneSiteBinding => "one-site-binding",
+            Self::HillBinding => "hill-binding",
+            Self::ExpDecay => "exp-decay",
+            Self::ExpGrowth => "exp-growth",
+            Self::LogDoseResponse => "log-dose-response",
+            Self::Line => "line",
+        }
+    }
+    fn label(self) -> &'static str {
+        match self {
+            Self::OneSiteBinding => "one-site binding (Bmax, Kd)",
+            Self::HillBinding => "Hill binding (Bmax, Kd, h)",
+            Self::ExpDecay => "exp decay 1-phase (Y0, Plateau, K)",
+            Self::ExpGrowth => "exp growth (Y0, K)",
+            Self::LogDoseResponse => "log(dose)-response (Bottom, Top, logEC50, Hill)",
+            Self::Line => "linear (Intercept, Slope)",
         }
     }
 }
@@ -441,6 +487,7 @@ impl AppState {
                 self.modal = ModalKind::AddAnalysis {
                     source: self.first_data_sheet(),
                     kind: AnalysisKindChoice::Descriptives,
+                    model_id: FitModelChoice::default(),
                     a: String::new(),
                     b: String::new(),
                     x: String::new(),
@@ -1339,7 +1386,8 @@ impl AppState {
                 x,
                 y,
                 col,
-            } => self.show_add_analysis_modal(&ctx, source, kind, a, b, x, y, col),
+                model_id,
+            } => self.show_add_analysis_modal(&ctx, source, kind, a, b, x, y, col, model_id),
             ModalKind::AddGraph {
                 source,
                 kind,
@@ -1474,6 +1522,7 @@ impl AppState {
         x: &mut String,
         y: &mut String,
         col: &mut String,
+        model_id: &mut FitModelChoice,
     ) -> ModalResult {
         let mut outcome = ModalResult::Keep;
         Modal::new("gc-add-analysis".into()).show(ctx, |ui| {
@@ -1510,6 +1559,18 @@ impl AppState {
                     labeled(ui, "Group a (name or 0-based index)", a);
                     labeled(ui, "Group b", b);
                 }
+                AnalysisKindChoice::NonlinearFit => {
+                    labeled(ui, "x column", x);
+                    labeled(ui, "y column", y);
+                    ui.label("Model");
+                    ComboBox::from_id_salt("ana-fit-model")
+                        .selected_text(model_id.label())
+                        .show_ui(ui, |ui| {
+                            for m in FitModelChoice::ALL {
+                                ui.selectable_value(model_id, m, m.label());
+                            }
+                        });
+                }
             }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
@@ -1519,7 +1580,7 @@ impl AppState {
                 let can_add = source.is_some();
                 if ui.add_enabled(can_add, egui::Button::new("Add")).clicked() {
                     if let Some(src) = *source {
-                        let spec = analysis_spec_from(*kind, a, b, x, y, col);
+                        let spec = analysis_spec_from(*kind, a, b, x, y, col, *model_id);
                         outcome = self.commit_add_analysis(src, spec);
                     }
                 }
@@ -1720,6 +1781,7 @@ fn analysis_spec_from(
     x: &str,
     y: &str,
     col: &str,
+    model_id: FitModelChoice,
 ) -> AnalysisSpec {
     match kind {
         AnalysisKindChoice::Descriptives => AnalysisSpec::Descriptives,
@@ -1745,6 +1807,11 @@ fn analysis_spec_from(
             b: b.to_string(),
         },
         AnalysisKindChoice::ChiSquare => AnalysisSpec::ChiSquare,
+        AnalysisKindChoice::NonlinearFit => AnalysisSpec::NonlinearFit {
+            model_id: model_id.id().to_string(),
+            x: x.to_string(),
+            y: y.to_string(),
+        },
     }
 }
 

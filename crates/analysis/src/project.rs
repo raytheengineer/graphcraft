@@ -81,6 +81,9 @@ pub fn run_analysis(table: &AnyTable, spec: &AnalysisSpec) -> Result<Value, Anal
         }
         AnalysisSpec::LogRank { a, b } => run_log_rank(require_survival_table(table)?, a, b),
         AnalysisSpec::ChiSquare => run_chi_square(require_contingency_table(table)?),
+        AnalysisSpec::NonlinearFit { model_id, x, y } => {
+            run_nonlinear_fit(require_column_table(table)?, model_id, x, y)
+        }
     }
 }
 
@@ -451,6 +454,86 @@ fn run_chi_square(t: &ContingencyTable) -> Result<Value, AnalysisError> {
     Ok(out)
 }
 
+fn run_nonlinear_fit(
+    t: &ColumnTable,
+    model_id: &str,
+    x: &str,
+    y: &str,
+) -> Result<Value, AnalysisError> {
+    use graphcraft_regression::lm::LmOptions;
+    use graphcraft_regression::models::{
+        fit_model, ExpDecayOnePhase, ExpGrowth, HillBinding, Line, LogDoseResponse, NonlinearModel,
+        OneSiteBinding,
+    };
+
+    let ix = resolve_column(t, x)?;
+    let iy = resolve_column(t, y)?;
+    let xcol = &t.columns[ix];
+    let ycol = &t.columns[iy];
+    let mut xs: Vec<f64> = Vec::new();
+    let mut ys: Vec<f64> = Vec::new();
+    for i in 0..xcol.values.len().min(ycol.values.len()) {
+        if let (Some(xv), Some(yv)) = (xcol.values[i], ycol.values[i]) {
+            if xv.is_finite() && yv.is_finite() {
+                xs.push(xv);
+                ys.push(yv);
+            }
+        }
+    }
+
+    let opts = LmOptions::default();
+    let (names, fit) = match model_id {
+        "one-site-binding" => (
+            OneSiteBinding.param_names(),
+            fit_model(&OneSiteBinding, &xs, &ys, opts)?,
+        ),
+        "hill-binding" => (
+            HillBinding.param_names(),
+            fit_model(&HillBinding, &xs, &ys, opts)?,
+        ),
+        "exp-decay" => (
+            ExpDecayOnePhase.param_names(),
+            fit_model(&ExpDecayOnePhase, &xs, &ys, opts)?,
+        ),
+        "exp-growth" => (
+            ExpGrowth.param_names(),
+            fit_model(&ExpGrowth, &xs, &ys, opts)?,
+        ),
+        "log-dose-response" => (
+            LogDoseResponse.param_names(),
+            fit_model(&LogDoseResponse, &xs, &ys, opts)?,
+        ),
+        "line" => (Line.param_names(), fit_model(&Line, &xs, &ys, opts)?),
+        other => return Err(AnalysisError::UnknownColumn(format!("model {other:?}"))),
+    };
+
+    let params_json: Vec<_> = names
+        .iter()
+        .zip(fit.params.iter())
+        .zip(fit.se.iter())
+        .map(|((n, v), s)| json!({ "name": n, "value": v, "se": s }))
+        .collect();
+
+    Ok(json!({
+        "kind": "nonlinear-fit",
+        "model_id": model_id,
+        "x": x,
+        "y": y,
+        "n": fit.n,
+        "p_count": fit.p_count,
+        "params": params_json,
+        "rss": fit.rss,
+        "residual_se": fit.residual_se,
+        "r_squared": fit.r_squared,
+        "adj_r_squared": fit.adj_r_squared,
+        "f_stat": fit.f_stat,
+        "f_df_num": fit.f_df_num,
+        "f_df_den": fit.f_df_den,
+        "f_p": fit.f_p,
+        "fitted": fit.fitted,
+    }))
+}
+
 fn run_shapiro_wilk(t: &ColumnTable, col: &str) -> Result<Value, AnalysisError> {
     let i = resolve_column(t, col)?;
     let values: Vec<f64> = t.group_values(i).collect();
@@ -729,6 +812,42 @@ mod tests {
         assert_eq!(v["n_rows"], 2);
         assert!(v["fisher_exact"].is_object());
         assert!(v["fisher_exact"]["p_two_sided"].as_f64().unwrap() > 0.0);
+    }
+
+    #[test]
+    fn nonlinear_fit_line_recovers_slope() {
+        use graphcraft_table::{Column, ColumnTable};
+        let t = ColumnTable {
+            title: "t".into(),
+            row_titles: vec![],
+            columns: vec![
+                Column {
+                    title: "x".into(),
+                    values: (0..10).map(|i| Some(i as f64)).collect(),
+                },
+                Column {
+                    title: "y".into(),
+                    values: (0..10).map(|i| Some(3.0 * (i as f64) + 2.0)).collect(),
+                },
+            ],
+        };
+        let spec = AnalysisSpec::NonlinearFit {
+            model_id: "line".into(),
+            x: "x".into(),
+            y: "y".into(),
+        };
+        let v = run_analysis(&AnyTable::Column(t), &spec).unwrap();
+        assert_eq!(v["kind"], "nonlinear-fit");
+        assert_eq!(v["model_id"], "line");
+        let params = v["params"].as_array().unwrap();
+        let by_name = |name: &str| {
+            params.iter().find(|p| p["name"] == name).unwrap()["value"]
+                .as_f64()
+                .unwrap()
+        };
+        assert!((by_name("Slope") - 3.0).abs() < 1e-6);
+        assert!((by_name("Intercept") - 2.0).abs() < 1e-6);
+        assert!(v["r_squared"].as_f64().unwrap() > 0.999_999);
     }
 
     #[test]

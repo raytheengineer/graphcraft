@@ -343,6 +343,16 @@ pub enum AnalysisSpec {
     /// Chi-squared test of independence on a Contingency table.
     /// For a 2×2 table, Fisher's exact is reported alongside.
     ChiSquare,
+    /// Non-linear curve fit on `(x, y)` columns of a Column data
+    /// sheet. `model_id` selects a published model (one-site
+    /// binding, Hill, one-phase decay, exponential growth,
+    /// log-dose-response, line). Results include fitted
+    /// parameters, SEs, R², and goodness-of-fit.
+    NonlinearFit {
+        model_id: String,
+        x: String,
+        y: String,
+    },
 }
 
 impl AnalysisSpec {
@@ -359,6 +369,7 @@ impl AnalysisSpec {
             Self::GroupedOneWayAnova => "grouped-one-way-anova",
             Self::LogRank { .. } => "log-rank",
             Self::ChiSquare => "chi-square",
+            Self::NonlinearFit { .. } => "nonlinear-fit",
         }
     }
 
@@ -374,6 +385,7 @@ impl AnalysisSpec {
             Self::GroupedOneWayAnova => "One-way ANOVA (grouped)".to_string(),
             Self::LogRank { a, b } => format!("Log-rank: {a} vs {b}"),
             Self::ChiSquare => "Chi-squared".to_string(),
+            Self::NonlinearFit { model_id, x, y } => format!("Fit {model_id}: {y} ~ f({x})"),
         }
     }
 }
