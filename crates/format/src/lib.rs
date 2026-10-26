@@ -14,7 +14,10 @@
 //! old file becomes one `Sheet` of kind `Data`.
 
 pub mod csv;
-pub use csv::{csv_to_xy, import_csv, parse_csv_to_column_table};
+pub use csv::{
+    csv_to_contingency, csv_to_grouped, csv_to_survival, csv_to_xy, import_csv,
+    parse_csv_to_column_table,
+};
 
 use graphcraft_table::AnyTable;
 use serde::{Deserialize, Serialize};

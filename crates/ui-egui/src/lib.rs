@@ -209,14 +209,26 @@ enum TableKindChoice {
     #[default]
     Column,
     Xy,
+    Grouped,
+    Survival,
+    Contingency,
 }
 
 impl TableKindChoice {
-    const ALL: [Self; 2] = [Self::Column, Self::Xy];
+    const ALL: [Self; 5] = [
+        Self::Column,
+        Self::Xy,
+        Self::Grouped,
+        Self::Survival,
+        Self::Contingency,
+    ];
     fn label(self) -> &'static str {
         match self {
             Self::Column => "Column (grouped values per column)",
             Self::Xy => "XY (first column is x, remaining columns are y datasets)",
+            Self::Grouped => "Grouped (columns sharing a prefix before `.` are replicates)",
+            Self::Survival => "Survival (pairs of columns: <group>_time, <group>_event)",
+            Self::Contingency => "Contingency (every cell is a non-negative integer)",
         }
     }
 }
@@ -1398,6 +1410,29 @@ impl AppState {
                     return ModalResult::Keep;
                 }
             },
+            TableKindChoice::Grouped => match graphcraft_format::csv_to_grouped(column_table) {
+                Ok(g) => AnyTable::Grouped(g),
+                Err(e) => {
+                    self.status_line = format!("grouped import failed: {e}");
+                    return ModalResult::Keep;
+                }
+            },
+            TableKindChoice::Survival => match graphcraft_format::csv_to_survival(column_table) {
+                Ok(s) => AnyTable::Survival(s),
+                Err(e) => {
+                    self.status_line = format!("survival needs paired time/event columns: {e}");
+                    return ModalResult::Keep;
+                }
+            },
+            TableKindChoice::Contingency => {
+                match graphcraft_format::csv_to_contingency(column_table) {
+                    Ok(c) => AnyTable::Contingency(c),
+                    Err(e) => {
+                        self.status_line = format!("contingency import failed: {e}");
+                        return ModalResult::Keep;
+                    }
+                }
+            }
         };
         let data_id = self.project.add_data_sheet(final_title.clone(), table);
         self.project.sync_legend_from_data();

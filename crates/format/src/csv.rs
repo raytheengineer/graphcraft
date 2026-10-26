@@ -12,7 +12,10 @@
 //!
 //! Input is capped at 64 MiB to bound allocation on untrusted input.
 
-use graphcraft_table::{AnyTable, Column, ColumnTable, XyTable, YDataset, YFormat};
+use graphcraft_table::{
+    AnyTable, Column, ColumnTable, ContingencyTable, GroupColumn, GroupedTable, SurvivalGroup,
+    SurvivalRow, SurvivalTable, XyTable, YDataset, YFormat,
+};
 
 use crate::{Document, FormatError, Project};
 
@@ -119,6 +122,133 @@ pub fn csv_to_xy(t: ColumnTable) -> Result<XyTable, FormatError> {
         x_title: x_col.title,
         x: x_col.values,
         datasets,
+    })
+}
+
+/// Reshape a parsed CSV into a `GroupedTable`. Columns whose
+/// headers share a prefix before the first `.` go into the same
+/// group as replicate subcolumns (so `A.1, A.2, B.1` → group `A`
+/// with two replicates and group `B` with one). Columns without
+/// a `.` form a group of one replicate each. Order follows
+/// first-appearance in the header. Returns `Err(CsvEmpty)` on an
+/// empty table.
+pub fn csv_to_grouped(t: ColumnTable) -> Result<GroupedTable, FormatError> {
+    if t.columns.is_empty() {
+        return Err(FormatError::CsvEmpty);
+    }
+    let mut order: Vec<String> = Vec::new();
+    let mut groups: std::collections::HashMap<String, Vec<Column>> =
+        std::collections::HashMap::new();
+    for col in t.columns {
+        let (group, sub) = match col.title.split_once('.') {
+            Some((g, _)) => (g.trim().to_string(), col),
+            None => (col.title.trim().to_string(), col),
+        };
+        if !groups.contains_key(&group) {
+            order.push(group.clone());
+        }
+        groups.entry(group).or_default().push(sub);
+    }
+    let mut out = Vec::with_capacity(order.len());
+    for title in order {
+        if let Some(subs) = groups.remove(&title) {
+            out.push(GroupColumn {
+                title,
+                subcolumns: subs,
+            });
+        }
+    }
+    Ok(GroupedTable {
+        title: t.title,
+        row_titles: t.row_titles,
+        groups: out,
+    })
+}
+
+/// Reshape a parsed CSV into a `SurvivalTable`. The CSV must have
+/// an even number of columns, paired `<group>_time, <group>_event`
+/// (or any two consecutive columns, in which case the group title
+/// is taken from the time column with any trailing `_time` /
+/// `_t` / ` time` stripped). `event` values are read as 1 =
+/// event, 0 = censored; a missing cell is treated as censored.
+/// Returns `Err(CsvEmpty)` on fewer than two columns or an odd
+/// column count.
+pub fn csv_to_survival(t: ColumnTable) -> Result<SurvivalTable, FormatError> {
+    if t.columns.len() < 2 || t.columns.len() % 2 != 0 {
+        return Err(FormatError::CsvEmpty);
+    }
+    let mut time_title = String::new();
+    let mut groups: Vec<SurvivalGroup> = Vec::new();
+    for pair in t.columns.chunks(2) {
+        let time_col = &pair[0];
+        let event_col = &pair[1];
+        let name = time_col
+            .title
+            .trim_end_matches("_time")
+            .trim_end_matches("_t")
+            .trim_end_matches(" time")
+            .to_string();
+        if time_title.is_empty() {
+            time_title = "time".to_string();
+        }
+        let n = time_col.values.len().max(event_col.values.len());
+        let mut rows = Vec::with_capacity(n);
+        for i in 0..n {
+            let time = match time_col.values.get(i).and_then(|v| *v) {
+                Some(t) if t.is_finite() => t,
+                _ => continue,
+            };
+            let event = event_col
+                .values
+                .get(i)
+                .and_then(|v| *v)
+                .map(|e| e != 0.0)
+                .unwrap_or(false);
+            rows.push(SurvivalRow {
+                time,
+                censored: !event,
+            });
+        }
+        groups.push(SurvivalGroup { title: name, rows });
+    }
+    Ok(SurvivalTable {
+        title: t.title,
+        time_title,
+        groups,
+    })
+}
+
+/// Reshape a parsed CSV into a `ContingencyTable`. Every data
+/// cell must be a non-negative integer; `None` is read as `0`.
+/// Returns `Err(CsvEmpty)` on an empty table or
+/// `Err(CsvNotNumeric { .. })` on a negative / non-integer cell.
+pub fn csv_to_contingency(t: ColumnTable) -> Result<ContingencyTable, FormatError> {
+    if t.columns.is_empty() {
+        return Err(FormatError::CsvEmpty);
+    }
+    let height = t.columns.iter().map(|c| c.values.len()).max().unwrap_or(0);
+    let column_titles: Vec<String> = t.columns.iter().map(|c| c.title.clone()).collect();
+    let mut counts: Vec<Vec<u64>> = Vec::with_capacity(height);
+    for r in 0..height {
+        let mut row = Vec::with_capacity(t.columns.len());
+        for (col_idx, c) in t.columns.iter().enumerate() {
+            let v = c.values.get(r).and_then(|v| *v).unwrap_or(0.0);
+            if !v.is_finite() || v < 0.0 || v.fract() != 0.0 {
+                return Err(FormatError::CsvNotNumeric {
+                    line: r + 2,
+                    column: col_idx + 1,
+                    cell: format!("{v}"),
+                });
+            }
+            row.push(v as u64);
+        }
+        counts.push(row);
+    }
+    Ok(ContingencyTable {
+        title: t.title,
+        row_titles: t.row_titles,
+        column_titles,
+        counts,
     })
 }
 
@@ -283,6 +413,53 @@ mod tests {
         assert!(matches!(
             import_csv(b"").unwrap_err(),
             FormatError::CsvEmpty
+        ));
+    }
+
+    #[test]
+    fn grouped_prefix_before_dot() {
+        let csv = b"A.1,A.2,B.1\n1,2,10\n3,4,30\n";
+        let t = parse_csv_to_column_table(csv).unwrap();
+        let g = csv_to_grouped(t).unwrap();
+        assert_eq!(g.groups.len(), 2);
+        assert_eq!(g.groups[0].title, "A");
+        assert_eq!(g.groups[0].replicates(), 2);
+        assert_eq!(g.groups[1].title, "B");
+        assert_eq!(g.groups[1].replicates(), 1);
+    }
+
+    #[test]
+    fn survival_pairs_time_event() {
+        let csv = b"Arm1_time,Arm1_event,Arm2_time,Arm2_event\n5,1,8,0\n10,0,12,1\n";
+        let t = parse_csv_to_column_table(csv).unwrap();
+        let s = csv_to_survival(t).unwrap();
+        assert_eq!(s.groups.len(), 2);
+        assert_eq!(s.groups[0].title, "Arm1");
+        assert_eq!(s.groups[0].rows[0].time, 5.0);
+        assert!(!s.groups[0].rows[0].censored); // event=1 → not censored
+        assert!(s.groups[0].rows[1].censored); // event=0 → censored
+        assert_eq!(s.groups[1].rows[1].time, 12.0);
+    }
+
+    #[test]
+    fn contingency_integer_cells() {
+        let csv = b"placebo,treatment\n12,25\n30,8\n";
+        let t = parse_csv_to_column_table(csv).unwrap();
+        let c = csv_to_contingency(t).unwrap();
+        assert_eq!(c.rows(), 2);
+        assert_eq!(c.cols(), 2);
+        assert_eq!(c.cell(0, 0), Some(12));
+        assert_eq!(c.cell(1, 1), Some(8));
+        assert_eq!(c.column_titles, vec!["placebo", "treatment"]);
+    }
+
+    #[test]
+    fn contingency_rejects_fractional() {
+        let csv = b"a,b\n1.5,2\n";
+        let t = parse_csv_to_column_table(csv).unwrap();
+        assert!(matches!(
+            csv_to_contingency(t).unwrap_err(),
+            FormatError::CsvNotNumeric { .. }
         ));
     }
 
