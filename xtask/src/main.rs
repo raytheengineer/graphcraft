@@ -17,6 +17,7 @@ fn main() -> Result<()> {
         Some("wasm") => wasm(),
         Some("perf") => perf(),
         Some("ci") => ci(),
+        Some("package") => package(&rest),
         Some(other) => Err(anyhow!("unknown xtask: {other}. See xtask/src/main.rs")),
         None => {
             println!(
@@ -30,7 +31,9 @@ fn main() -> Result<()> {
                  assets    — verify every tracked asset is listed in ASSETS.md\n  \
                  wasm      — build the engine for wasm32-unknown-unknown (noop if target absent)\n  \
                  perf      — run the perf-budget harness (advisory)\n  \
-                 ci        — run everything above"
+                 ci        — run everything above\n  \
+                 package   — build a redistributable for the host OS\n              \
+                 (macOS: .app bundle; Linux: AppDir; Windows: .zip)"
             );
             Ok(())
         }
@@ -315,5 +318,148 @@ fn ci() -> Result<()> {
     assets()?;
     wasm()?;
     println!("ci ok");
+    Ok(())
+}
+
+/// Build a redistributable package for the host OS. The native
+/// desktop binary (`graphcraft`) is release-built first; the
+/// output is dropped under `target/package/`.
+///
+/// Arguments: none. Future expansion may take `--target` to
+/// cross-package, but for now the host OS decides.
+fn package(_args: &[String]) -> Result<()> {
+    let root = repo_root()?;
+    let pkg_dir = root.join("target/package");
+    std::fs::create_dir_all(&pkg_dir).with_context(|| format!("mkdir -p {}", pkg_dir.display()))?;
+
+    println!("cargo build --release -p graphcraft");
+    run(Command::new("cargo")
+        .current_dir(&root)
+        .args(["build", "--release", "-p", "graphcraft"]))?;
+
+    let version = env!("CARGO_PKG_VERSION");
+    if cfg!(target_os = "macos") {
+        package_macos(&root, &pkg_dir, version)
+    } else if cfg!(target_os = "linux") {
+        package_linux(&root, &pkg_dir, version)
+    } else if cfg!(target_os = "windows") {
+        package_windows(&root, &pkg_dir, version)
+    } else {
+        bail!("packaging on this host OS is not supported yet")
+    }
+}
+
+fn package_macos(root: &Path, pkg_dir: &Path, version: &str) -> Result<()> {
+    let bin = root.join("target/release/graphcraft");
+    if !bin.exists() {
+        bail!("expected binary not found: {}", bin.display());
+    }
+    let app = pkg_dir.join("GraphCraft.app");
+    let _ = std::fs::remove_dir_all(&app);
+    let contents = app.join("Contents");
+    let macos = contents.join("MacOS");
+    let resources = contents.join("Resources");
+    std::fs::create_dir_all(&macos)?;
+    std::fs::create_dir_all(&resources)?;
+
+    std::fs::copy(&bin, macos.join("graphcraft"))
+        .with_context(|| format!("copy binary into {}", macos.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut p = std::fs::metadata(macos.join("graphcraft"))?.permissions();
+        p.set_mode(0o755);
+        std::fs::set_permissions(macos.join("graphcraft"), p)?;
+    }
+
+    let plist = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+         <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \
+         \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
+         <plist version=\"1.0\">\n<dict>\n  \
+           <key>CFBundleName</key><string>GraphCraft</string>\n  \
+           <key>CFBundleDisplayName</key><string>GraphCraft</string>\n  \
+           <key>CFBundleIdentifier</key><string>com.graphcraft.app</string>\n  \
+           <key>CFBundleVersion</key><string>{version}</string>\n  \
+           <key>CFBundleShortVersionString</key><string>{version}</string>\n  \
+           <key>CFBundlePackageType</key><string>APPL</string>\n  \
+           <key>CFBundleExecutable</key><string>graphcraft</string>\n  \
+           <key>LSMinimumSystemVersion</key><string>10.13</string>\n  \
+           <key>NSHighResolutionCapable</key><true/>\n  \
+           <key>NSHumanReadableCopyright</key><string>MIT OR Apache-2.0</string>\n\
+         </dict>\n</plist>\n"
+    );
+    std::fs::write(contents.join("Info.plist"), plist)?;
+    println!("packaged {}", app.display());
+    Ok(())
+}
+
+fn package_linux(root: &Path, pkg_dir: &Path, version: &str) -> Result<()> {
+    let bin = root.join("target/release/graphcraft");
+    if !bin.exists() {
+        bail!("expected binary not found: {}", bin.display());
+    }
+    let appdir = pkg_dir.join("GraphCraft.AppDir");
+    let _ = std::fs::remove_dir_all(&appdir);
+    let bin_dir = appdir.join("usr/bin");
+    std::fs::create_dir_all(&bin_dir)?;
+    std::fs::copy(&bin, bin_dir.join("graphcraft"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut p = std::fs::metadata(bin_dir.join("graphcraft"))?.permissions();
+        p.set_mode(0o755);
+        std::fs::set_permissions(bin_dir.join("graphcraft"), p)?;
+    }
+    let desktop = format!(
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Name=GraphCraft\n\
+         Comment=Scientific graphing and analysis (v{version})\n\
+         Exec=graphcraft\n\
+         Terminal=false\n\
+         Categories=Science;Education;\n"
+    );
+    std::fs::write(appdir.join("graphcraft.desktop"), desktop)?;
+    let run = "#!/bin/sh\n\
+               HERE=\"$(dirname \"$(readlink -f \"${0}\")\")\"\n\
+               exec \"${HERE}/usr/bin/graphcraft\" \"$@\"\n";
+    std::fs::write(appdir.join("AppRun"), run)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut p = std::fs::metadata(appdir.join("AppRun"))?.permissions();
+        p.set_mode(0o755);
+        std::fs::set_permissions(appdir.join("AppRun"), p)?;
+    }
+    println!("packaged {}", appdir.display());
+    println!(
+        "  → turn into an AppImage with: appimagetool {}",
+        appdir.display()
+    );
+    Ok(())
+}
+
+fn package_windows(root: &Path, pkg_dir: &Path, version: &str) -> Result<()> {
+    let bin = root.join("target/release/graphcraft.exe");
+    if !bin.exists() {
+        bail!("expected binary not found: {}", bin.display());
+    }
+    let stage = pkg_dir.join(format!("GraphCraft-{version}"));
+    let _ = std::fs::remove_dir_all(&stage);
+    std::fs::create_dir_all(&stage)?;
+    std::fs::copy(&bin, stage.join("graphcraft.exe"))?;
+    let readme = format!(
+        "GraphCraft v{version}\n\
+         ====================\n\
+         Run graphcraft.exe to launch the app.\n\
+         Licensed under MIT OR Apache-2.0.\n"
+    );
+    std::fs::write(stage.join("README.txt"), readme)?;
+    println!("packaged {}", stage.display());
+    println!(
+        "  → zip into a release with: Compress-Archive {} GraphCraft-{version}.zip",
+        stage.display()
+    );
     Ok(())
 }
