@@ -278,6 +278,77 @@ impl AnalysisKindChoice {
     }
 }
 
+/// Pre-canned starting shape for a new project. Each template
+/// scaffolds an empty Data sheet, an Analysis sheet (which
+/// errors until the user types data — same path as a manual
+/// add), and a Graph sheet, so the user starts with the three
+/// sheets they're going to want anyway.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ProjectTemplate {
+    XyDoseResponse,
+    ColumnGroups,
+    GroupedReplicates,
+    SurvivalLogRank,
+    ContingencyChiSquare,
+}
+
+impl ProjectTemplate {
+    const ALL: [Self; 5] = [
+        Self::XyDoseResponse,
+        Self::ColumnGroups,
+        Self::GroupedReplicates,
+        Self::SurvivalLogRank,
+        Self::ContingencyChiSquare,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::XyDoseResponse => "XY: dose–response (non-linear fit)",
+            Self::ColumnGroups => "Column: groups (one-way ANOVA)",
+            Self::GroupedReplicates => "Grouped: groups × replicates (grouped ANOVA)",
+            Self::SurvivalLogRank => "Survival: Kaplan–Meier (log-rank)",
+            Self::ContingencyChiSquare => "Contingency: 2×2 (chi-squared + Fisher)",
+        }
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            Self::XyDoseResponse => "Dose–response project",
+            Self::ColumnGroups => "Column groups project",
+            Self::GroupedReplicates => "Grouped replicates project",
+            Self::SurvivalLogRank => "Survival project",
+            Self::ContingencyChiSquare => "Contingency project",
+        }
+    }
+
+    fn data_title(self) -> String {
+        match self {
+            Self::XyDoseResponse => "Dose vs Response".into(),
+            Self::ColumnGroups => "Groups".into(),
+            Self::GroupedReplicates => "Grouped data".into(),
+            Self::SurvivalLogRank => "Survival data".into(),
+            Self::ContingencyChiSquare => "Contingency 2x2".into(),
+        }
+    }
+
+    fn analysis_spec(self) -> AnalysisSpec {
+        match self {
+            Self::XyDoseResponse => AnalysisSpec::NonlinearFit {
+                model_id: "log-dose-response".into(),
+                x: "dose".into(),
+                y: "response".into(),
+            },
+            Self::ColumnGroups => AnalysisSpec::OneWayAnova,
+            Self::GroupedReplicates => AnalysisSpec::GroupedOneWayAnova,
+            Self::SurvivalLogRank => AnalysisSpec::LogRank {
+                a: "Ctrl".into(),
+                b: "Drug".into(),
+            },
+            Self::ContingencyChiSquare => AnalysisSpec::ChiSquare,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 enum FitModelChoice {
     #[default]
@@ -449,6 +520,14 @@ impl AppState {
                 self.selected = None;
                 self.status_line = "new project".into();
             }
+            ui.menu_button("Templates ▾", |ui| {
+                for tpl in ProjectTemplate::ALL {
+                    if ui.button(tpl.label()).clicked() {
+                        self.new_from_template(tpl);
+                        ui.close();
+                    }
+                }
+            });
             if ui.button("Open…").clicked() {
                 self.handle_open();
             }
@@ -1303,6 +1382,139 @@ impl AppState {
     // ---------------------------------------------------------------
     // Mutations.
     // ---------------------------------------------------------------
+
+    /// Replace the open project with one scaffolded from `tpl`:
+    /// an empty data sheet of the right shape, one analysis
+    /// sheet (which produces an "error" result until the user
+    /// fills the data in, same as any manual add), and one graph
+    /// sheet. Selects the data sheet so the user is already in
+    /// edit position.
+    fn new_from_template(&mut self, tpl: ProjectTemplate) {
+        use graphcraft_format::GraphSpec;
+        use graphcraft_table::{
+            AnyTable, Column, ColumnTable, ContingencyTable, GroupColumn, GroupedTable,
+            SurvivalGroup, SurvivalTable,
+        };
+        let mut project = Project::new(tpl.title());
+
+        let data_table: AnyTable = match tpl {
+            ProjectTemplate::XyDoseResponse => AnyTable::Column(ColumnTable {
+                title: "Dose vs Response".into(),
+                row_titles: vec![],
+                columns: vec![
+                    Column {
+                        title: "dose".into(),
+                        values: vec![None; 8],
+                    },
+                    Column {
+                        title: "response".into(),
+                        values: vec![None; 8],
+                    },
+                ],
+            }),
+            ProjectTemplate::ColumnGroups => AnyTable::Column(ColumnTable {
+                title: "Groups".into(),
+                row_titles: vec![],
+                columns: vec![
+                    Column {
+                        title: "control".into(),
+                        values: vec![None; 6],
+                    },
+                    Column {
+                        title: "treatment".into(),
+                        values: vec![None; 6],
+                    },
+                ],
+            }),
+            ProjectTemplate::GroupedReplicates => AnyTable::Grouped(GroupedTable {
+                title: "Grouped".into(),
+                row_titles: vec![],
+                groups: vec![
+                    GroupColumn {
+                        title: "A".into(),
+                        subcolumns: vec![
+                            Column {
+                                title: "rep1".into(),
+                                values: vec![None; 4],
+                            },
+                            Column {
+                                title: "rep2".into(),
+                                values: vec![None; 4],
+                            },
+                        ],
+                    },
+                    GroupColumn {
+                        title: "B".into(),
+                        subcolumns: vec![
+                            Column {
+                                title: "rep1".into(),
+                                values: vec![None; 4],
+                            },
+                            Column {
+                                title: "rep2".into(),
+                                values: vec![None; 4],
+                            },
+                        ],
+                    },
+                ],
+            }),
+            ProjectTemplate::SurvivalLogRank => AnyTable::Survival(SurvivalTable {
+                title: "Survival".into(),
+                time_title: "time".into(),
+                groups: vec![
+                    SurvivalGroup {
+                        title: "Ctrl".into(),
+                        rows: vec![],
+                    },
+                    SurvivalGroup {
+                        title: "Drug".into(),
+                        rows: vec![],
+                    },
+                ],
+            }),
+            ProjectTemplate::ContingencyChiSquare => AnyTable::Contingency(ContingencyTable {
+                title: "Contingency".into(),
+                row_titles: vec![],
+                column_titles: vec!["placebo".into(), "treatment".into()],
+                counts: vec![vec![0, 0], vec![0, 0]],
+            }),
+        };
+
+        let data_id = project.add_data_sheet(tpl.data_title(), data_table);
+        project.sync_legend_from_data();
+
+        let analysis_spec = tpl.analysis_spec();
+        let _ = add_analysis_sheet(&mut project, data_id, analysis_spec);
+
+        let graph_spec = match tpl {
+            ProjectTemplate::XyDoseResponse => GraphSpec::Xy {
+                x: "dose".into(),
+                y: "response".into(),
+                title: Some("Dose–response".into()),
+            },
+            ProjectTemplate::ColumnGroups => GraphSpec::Column {
+                title: Some("Group means".into()),
+                error_bars: graphcraft_format::GraphErrorBars::Sd,
+                y_title: None,
+            },
+            ProjectTemplate::GroupedReplicates => GraphSpec::Grouped {
+                title: Some("Grouped means".into()),
+                error_bars: graphcraft_format::GraphErrorBars::Sd,
+            },
+            ProjectTemplate::SurvivalLogRank => GraphSpec::Survival {
+                title: Some("Survival curves".into()),
+            },
+            ProjectTemplate::ContingencyChiSquare => GraphSpec::Heatmap {
+                title: Some("Observed counts".into()),
+                colormap: graphcraft_format::GraphColormap::default(),
+            },
+        };
+        let _ = graphcraft_analysis::add_graph_sheet(&mut project, data_id, graph_spec);
+
+        self.project = project;
+        self.selected = Some(data_id);
+        self.status_line = format!("templated: {}", tpl.label());
+    }
 
     fn handle_open(&mut self) {
         self.files.open_project(&self.inbox);
