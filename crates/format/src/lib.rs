@@ -334,6 +334,15 @@ pub enum AnalysisSpec {
     OlsRegression { x: String, y: String },
     /// Shapiro–Wilk normality on one column.
     ShapiroWilk { col: String },
+    /// One-way ANOVA across all groups of a Grouped data sheet.
+    /// Each group's replicates are flattened before analysis.
+    GroupedOneWayAnova,
+    /// Two-group log-rank test on a Survival data sheet.
+    /// `a` and `b` are group titles (or 0-based group indices).
+    LogRank { a: String, b: String },
+    /// Chi-squared test of independence on a Contingency table.
+    /// For a 2×2 table, Fisher's exact is reported alongside.
+    ChiSquare,
 }
 
 impl AnalysisSpec {
@@ -347,6 +356,9 @@ impl AnalysisSpec {
             Self::Pearson { .. } => "pearson",
             Self::OlsRegression { .. } => "ols-regression",
             Self::ShapiroWilk { .. } => "shapiro-wilk",
+            Self::GroupedOneWayAnova => "grouped-one-way-anova",
+            Self::LogRank { .. } => "log-rank",
+            Self::ChiSquare => "chi-square",
         }
     }
 
@@ -359,6 +371,9 @@ impl AnalysisSpec {
             Self::Pearson { a, b } => format!("Pearson: {a} vs {b}"),
             Self::OlsRegression { x, y } => format!("OLS: {y} ~ {x}"),
             Self::ShapiroWilk { col } => format!("Shapiro-Wilk: {col}"),
+            Self::GroupedOneWayAnova => "One-way ANOVA (grouped)".to_string(),
+            Self::LogRank { a, b } => format!("Log-rank: {a} vs {b}"),
+            Self::ChiSquare => "Chi-squared".to_string(),
         }
     }
 }

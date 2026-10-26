@@ -242,16 +242,22 @@ enum AnalysisKindChoice {
     Pearson,
     OlsRegression,
     ShapiroWilk,
+    GroupedOneWayAnova,
+    LogRank,
+    ChiSquare,
 }
 
 impl AnalysisKindChoice {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 9] = [
         Self::Descriptives,
         Self::OneWayAnova,
         Self::WelchT,
         Self::Pearson,
         Self::OlsRegression,
         Self::ShapiroWilk,
+        Self::GroupedOneWayAnova,
+        Self::LogRank,
+        Self::ChiSquare,
     ];
     fn label(self) -> &'static str {
         match self {
@@ -261,6 +267,9 @@ impl AnalysisKindChoice {
             Self::Pearson => "Pearson correlation",
             Self::OlsRegression => "OLS regression",
             Self::ShapiroWilk => "Shapiro-Wilk normality",
+            Self::GroupedOneWayAnova => "One-way ANOVA (grouped data)",
+            Self::LogRank => "Log-rank (survival)",
+            Self::ChiSquare => "Chi-squared / Fisher (contingency)",
         }
     }
 }
@@ -1482,7 +1491,10 @@ impl AppState {
                     }
                 });
             match *kind {
-                AnalysisKindChoice::Descriptives | AnalysisKindChoice::OneWayAnova => {}
+                AnalysisKindChoice::Descriptives
+                | AnalysisKindChoice::OneWayAnova
+                | AnalysisKindChoice::GroupedOneWayAnova
+                | AnalysisKindChoice::ChiSquare => {}
                 AnalysisKindChoice::WelchT | AnalysisKindChoice::Pearson => {
                     labeled(ui, "Column a (name or 0-based index)", a);
                     labeled(ui, "Column b", b);
@@ -1493,6 +1505,10 @@ impl AppState {
                 }
                 AnalysisKindChoice::ShapiroWilk => {
                     labeled(ui, "Column", col);
+                }
+                AnalysisKindChoice::LogRank => {
+                    labeled(ui, "Group a (name or 0-based index)", a);
+                    labeled(ui, "Group b", b);
                 }
             }
             ui.add_space(8.0);
@@ -1723,6 +1739,12 @@ fn analysis_spec_from(
         AnalysisKindChoice::ShapiroWilk => AnalysisSpec::ShapiroWilk {
             col: col.to_string(),
         },
+        AnalysisKindChoice::GroupedOneWayAnova => AnalysisSpec::GroupedOneWayAnova,
+        AnalysisKindChoice::LogRank => AnalysisSpec::LogRank {
+            a: a.to_string(),
+            b: b.to_string(),
+        },
+        AnalysisKindChoice::ChiSquare => AnalysisSpec::ChiSquare,
     }
 }
 

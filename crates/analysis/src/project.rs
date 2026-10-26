@@ -15,7 +15,7 @@
 
 use graphcraft_format::{source_hash, AnalysisSpec, Project, Sheet, SheetBody, SheetId};
 use graphcraft_numeric::NumericError;
-use graphcraft_table::{AnyTable, ColumnTable};
+use graphcraft_table::{AnyTable, ColumnTable, ContingencyTable, GroupedTable, SurvivalTable};
 use serde_json::{json, Value};
 
 use crate::{
@@ -69,14 +69,18 @@ impl From<NumericError> for AnalysisError {
 /// Run `spec` against a source `AnyTable`. Returns the result as a
 /// JSON value in the same shape the CLI and MCP already emit.
 pub fn run_analysis(table: &AnyTable, spec: &AnalysisSpec) -> Result<Value, AnalysisError> {
-    let col_table = require_column_table(table)?;
     match spec {
-        AnalysisSpec::Descriptives => run_descriptives(col_table),
-        AnalysisSpec::OneWayAnova => run_one_way_anova(col_table),
-        AnalysisSpec::WelchT { a, b } => run_welch_t(col_table, a, b),
-        AnalysisSpec::Pearson { a, b } => run_pearson(col_table, a, b),
-        AnalysisSpec::OlsRegression { x, y } => run_ols(col_table, x, y),
-        AnalysisSpec::ShapiroWilk { col } => run_shapiro_wilk(col_table, col),
+        AnalysisSpec::Descriptives => run_descriptives(require_column_table(table)?),
+        AnalysisSpec::OneWayAnova => run_one_way_anova(require_column_table(table)?),
+        AnalysisSpec::WelchT { a, b } => run_welch_t(require_column_table(table)?, a, b),
+        AnalysisSpec::Pearson { a, b } => run_pearson(require_column_table(table)?, a, b),
+        AnalysisSpec::OlsRegression { x, y } => run_ols(require_column_table(table)?, x, y),
+        AnalysisSpec::ShapiroWilk { col } => run_shapiro_wilk(require_column_table(table)?, col),
+        AnalysisSpec::GroupedOneWayAnova => {
+            run_grouped_one_way_anova(require_grouped_table(table)?)
+        }
+        AnalysisSpec::LogRank { a, b } => run_log_rank(require_survival_table(table)?, a, b),
+        AnalysisSpec::ChiSquare => run_chi_square(require_contingency_table(table)?),
     }
 }
 
@@ -284,6 +288,169 @@ fn run_ols(t: &ColumnTable, x: &str, y: &str) -> Result<Value, AnalysisError> {
     }))
 }
 
+fn require_grouped_table(table: &AnyTable) -> Result<&GroupedTable, AnalysisError> {
+    match table {
+        AnyTable::Grouped(g) => Ok(g),
+        other => Err(AnalysisError::WrongTableKind {
+            got: table_kind_str(other),
+            want: "grouped",
+        }),
+    }
+}
+
+fn require_survival_table(table: &AnyTable) -> Result<&SurvivalTable, AnalysisError> {
+    match table {
+        AnyTable::Survival(s) => Ok(s),
+        other => Err(AnalysisError::WrongTableKind {
+            got: table_kind_str(other),
+            want: "survival",
+        }),
+    }
+}
+
+fn require_contingency_table(table: &AnyTable) -> Result<&ContingencyTable, AnalysisError> {
+    match table {
+        AnyTable::Contingency(c) => Ok(c),
+        other => Err(AnalysisError::WrongTableKind {
+            got: table_kind_str(other),
+            want: "contingency",
+        }),
+    }
+}
+
+fn table_kind_str(t: &AnyTable) -> &'static str {
+    match t {
+        AnyTable::Column(_) => "column",
+        AnyTable::Xy(_) => "xy",
+        AnyTable::Grouped(_) => "grouped",
+        AnyTable::Contingency(_) => "contingency",
+        AnyTable::Survival(_) => "survival",
+        AnyTable::PartsOfWhole(_) => "parts_of_whole",
+        AnyTable::MultipleVariables(_) => "multiple_variables",
+        AnyTable::Nested(_) => "nested",
+    }
+}
+
+fn run_grouped_one_way_anova(t: &GroupedTable) -> Result<Value, AnalysisError> {
+    // Flatten each group's replicate subcolumns into a single
+    // Vec<f64> of non-missing values; feed to the existing
+    // one-way-anova primitive.
+    let groups: Vec<Vec<f64>> = t
+        .groups
+        .iter()
+        .map(|g| {
+            let mut flat: Vec<f64> = Vec::new();
+            for sub in &g.subcolumns {
+                for x in sub.values.iter().flatten() {
+                    if x.is_finite() {
+                        flat.push(*x);
+                    }
+                }
+            }
+            flat
+        })
+        .collect();
+    let labels: Vec<String> = t.groups.iter().map(|g| g.title.clone()).collect();
+    let a = graphcraft_stats::one_way_anova(&groups)?;
+    Ok(json!({
+        "kind": "grouped-one-way-anova",
+        "groups": labels,
+        "k": a.k,
+        "n_total": a.n_total,
+        "group_ns": a.group_ns,
+        "ss_between": a.ss_between,
+        "ss_within": a.ss_within,
+        "ss_total": a.ss_total,
+        "df_between": a.df_between,
+        "df_within": a.df_within,
+        "ms_between": a.ms_between,
+        "ms_within": a.ms_within,
+        "f": a.f,
+        "p": a.p,
+    }))
+}
+
+fn run_log_rank(t: &SurvivalTable, a: &str, b: &str) -> Result<Value, AnalysisError> {
+    let g1 = resolve_survival_group(t, a)?;
+    let g2 = resolve_survival_group(t, b)?;
+    let rows1: Vec<(f64, bool)> = t.groups[g1]
+        .rows
+        .iter()
+        .map(|r| (r.time, r.censored))
+        .collect();
+    let rows2: Vec<(f64, bool)> = t.groups[g2]
+        .rows
+        .iter()
+        .map(|r| (r.time, r.censored))
+        .collect();
+    let r = graphcraft_stats::log_rank(&rows1, &rows2)?;
+    Ok(json!({
+        "kind": "log-rank",
+        "group_a": t.groups[g1].title.clone(),
+        "group_b": t.groups[g2].title.clone(),
+        "n1": r.n1,
+        "n2": r.n2,
+        "o1_minus_e1": r.o1_minus_e1,
+        "variance": r.variance,
+        "chi2": r.chi2,
+        "df": r.df,
+        "p": r.p,
+        "log_hr": r.log_hr,
+        "se_log_hr": r.se_log_hr,
+        "hr": r.hr,
+        "hr_ci95": [r.hr_ci95.0, r.hr_ci95.1],
+    }))
+}
+
+fn resolve_survival_group(t: &SurvivalTable, s: &str) -> Result<usize, AnalysisError> {
+    if let Ok(i) = s.parse::<usize>() {
+        if i < t.groups.len() {
+            return Ok(i);
+        }
+    }
+    t.groups
+        .iter()
+        .position(|g| g.title == s)
+        .ok_or_else(|| AnalysisError::UnknownColumn(s.to_string()))
+}
+
+fn run_chi_square(t: &ContingencyTable) -> Result<Value, AnalysisError> {
+    let c = graphcraft_stats::chi_squared_independence(&t.counts)?;
+    let mut out = json!({
+        "kind": "chi-square",
+        "n_rows": c.n_rows,
+        "n_cols": c.n_cols,
+        "n": c.n,
+        "observed": c.observed,
+        "expected": c.expected,
+        "chi2": c.chi2,
+        "df": c.df,
+        "p": c.p,
+    });
+    // For a 2x2 table, add Fisher's exact alongside — the public
+    // Prism manual recommends Fisher for small expected counts;
+    // we always include it for 2x2 so callers can choose.
+    if c.n_rows == 2 && c.n_cols == 2 {
+        let a = t.counts[0][0];
+        let b = t.counts[0][1];
+        let cc = t.counts[1][0];
+        let d = t.counts[1][1];
+        if let Ok(f) = graphcraft_stats::fisher_exact_2x2(a, b, cc, d) {
+            out["fisher_exact"] = json!({
+                "a": f.a,
+                "b": f.b,
+                "c": f.c,
+                "d": f.d,
+                "p_observed": f.p_observed,
+                "p_two_sided": f.p_two_sided,
+                "p_one_sided": f.p_one_sided,
+                "odds_ratio": f.odds_ratio,
+            });
+        }
+    }
+    Ok(out)
+}
+
 fn run_shapiro_wilk(t: &ColumnTable, col: &str) -> Result<Value, AnalysisError> {
     let i = resolve_column(t, col)?;
     let values: Vec<f64> = t.group_values(i).collect();
@@ -453,6 +620,135 @@ mod tests {
         let (mut p, _) = sample_project();
         let err = add_analysis_sheet(&mut p, SheetId(999), AnalysisSpec::Descriptives).unwrap_err();
         assert!(matches!(err, AnalysisError::SourceMissing(_)));
+    }
+
+    #[test]
+    fn grouped_anova_flattens_replicates() {
+        use graphcraft_table::{Column, GroupColumn, GroupedTable};
+        let t = GroupedTable {
+            title: "g".into(),
+            row_titles: vec![],
+            groups: vec![
+                GroupColumn {
+                    title: "A".into(),
+                    subcolumns: vec![Column {
+                        title: "".into(),
+                        values: vec![Some(1.0), Some(2.0), Some(3.0)],
+                    }],
+                },
+                GroupColumn {
+                    title: "B".into(),
+                    subcolumns: vec![Column {
+                        title: "".into(),
+                        values: vec![Some(10.0), Some(11.0), Some(12.0)],
+                    }],
+                },
+                GroupColumn {
+                    title: "C".into(),
+                    subcolumns: vec![Column {
+                        title: "".into(),
+                        values: vec![Some(20.0), Some(21.0), Some(22.0)],
+                    }],
+                },
+            ],
+        };
+        let v = run_analysis(&AnyTable::Grouped(t), &AnalysisSpec::GroupedOneWayAnova).unwrap();
+        assert_eq!(v["k"], 3);
+        assert_eq!(v["n_total"], 9);
+        assert!(v["f"].as_f64().unwrap() > 0.0);
+        assert!(v["p"].as_f64().unwrap() < 1e-4);
+    }
+
+    #[test]
+    fn log_rank_resolves_group_names() {
+        use graphcraft_table::{SurvivalGroup, SurvivalRow, SurvivalTable};
+        let t = SurvivalTable {
+            title: "s".into(),
+            time_title: "t".into(),
+            groups: vec![
+                SurvivalGroup {
+                    title: "Ctrl".into(),
+                    rows: vec![
+                        SurvivalRow {
+                            time: 2.0,
+                            censored: false,
+                        },
+                        SurvivalRow {
+                            time: 4.0,
+                            censored: false,
+                        },
+                        SurvivalRow {
+                            time: 6.0,
+                            censored: false,
+                        },
+                    ],
+                },
+                SurvivalGroup {
+                    title: "Drug".into(),
+                    rows: vec![
+                        SurvivalRow {
+                            time: 8.0,
+                            censored: false,
+                        },
+                        SurvivalRow {
+                            time: 10.0,
+                            censored: false,
+                        },
+                        SurvivalRow {
+                            time: 12.0,
+                            censored: false,
+                        },
+                    ],
+                },
+            ],
+        };
+        let v = run_analysis(
+            &AnyTable::Survival(t),
+            &AnalysisSpec::LogRank {
+                a: "Ctrl".into(),
+                b: "Drug".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(v["group_a"], "Ctrl");
+        assert_eq!(v["group_b"], "Drug");
+        assert!(v["chi2"].as_f64().unwrap() > 0.0);
+    }
+
+    #[test]
+    fn chi_square_2x2_adds_fisher() {
+        use graphcraft_table::ContingencyTable;
+        let t = ContingencyTable {
+            title: "c".into(),
+            row_titles: vec![],
+            column_titles: vec!["placebo".into(), "treatment".into()],
+            counts: vec![vec![12, 25], vec![30, 8]],
+        };
+        let v = run_analysis(&AnyTable::Contingency(t), &AnalysisSpec::ChiSquare).unwrap();
+        assert_eq!(v["kind"], "chi-square");
+        assert_eq!(v["n_rows"], 2);
+        assert!(v["fisher_exact"].is_object());
+        assert!(v["fisher_exact"]["p_two_sided"].as_f64().unwrap() > 0.0);
+    }
+
+    #[test]
+    fn wrong_table_kind_rejected() {
+        let (p, src) = sample_project();
+        let _ = p; // use the usual column project to assert kind mismatch
+        let column_as_grouped = AnyTable::Column(graphcraft_table::ColumnTable {
+            title: "t".into(),
+            row_titles: vec![],
+            columns: vec![],
+        });
+        let err = run_analysis(&column_as_grouped, &AnalysisSpec::GroupedOneWayAnova).unwrap_err();
+        assert!(matches!(
+            err,
+            AnalysisError::WrongTableKind {
+                want: "grouped",
+                ..
+            }
+        ));
+        let _ = src;
     }
 
     #[test]
