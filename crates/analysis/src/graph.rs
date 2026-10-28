@@ -12,10 +12,11 @@ use graphcraft_format::{
 };
 use graphcraft_numeric::NumericError;
 use graphcraft_plot::{
-    column_scene, heatmap_scene, xy_scene_from_points, Color, Colormap, ColumnErrorBars,
-    ColumnOptions, HeatmapData, HeatmapOptions, Marker, Scene, Series, XyOptions,
+    column_scene, grouped_scene, heatmap_scene, survival_scene, xy_scene_from_points, Color,
+    Colormap, ColumnErrorBars, ColumnOptions, GroupedErrorBars, GroupedOptions, HeatmapData,
+    HeatmapOptions, Marker, Scene, Series, SurvivalOptions, XyOptions,
 };
-use graphcraft_table::{AnyTable, ColumnTable};
+use graphcraft_table::{AnyTable, ColumnTable, GroupColumn, GroupedTable, SurvivalTable};
 
 /// Error path for the graph dispatcher.
 #[derive(Debug, Clone, PartialEq)]
@@ -181,12 +182,10 @@ pub fn build_graph_scene(table: &AnyTable, spec: &GraphSpec) -> Result<Scene, Gr
             error_bars,
             y_title,
         } => build_column(table, title.as_deref(), *error_bars, y_title.as_deref()),
-        GraphSpec::Grouped { .. } => Err(GraphError::Unsupported(
-            "Grouped graphs require a Grouped data sheet (not yet produced by import)".into(),
-        )),
-        GraphSpec::Survival { .. } => Err(GraphError::Unsupported(
-            "Survival graphs require a Survival data sheet (not yet produced by import)".into(),
-        )),
+        GraphSpec::Grouped { title, error_bars } => {
+            build_grouped(table, title.as_deref(), *error_bars)
+        }
+        GraphSpec::Survival { title } => build_survival(table, title.as_deref()),
         GraphSpec::Heatmap { title, colormap } => build_heatmap(table, title.as_deref(), *colormap),
     }
 }
@@ -250,13 +249,107 @@ pub fn recompute_graph_sheet(project: &mut Project, id: SheetId) -> Result<(), G
 // Per-spec implementations.
 // ---------------------------------------------------------------
 
-fn require_column_table(table: &AnyTable) -> Result<&ColumnTable, GraphError> {
+/// Coerce any supported table into a Column view so that
+/// Column / Heatmap / (and in the future) XY plots can draw
+/// *something* from any data shape. The result is always a fresh
+/// owned `ColumnTable`; a user who plots a Survival or Grouped
+/// table as "Column" gets a sensible column-per-series layout
+/// instead of an error.
+pub fn coerce_to_column_table(table: &AnyTable) -> ColumnTable {
+    use graphcraft_table::Column;
     match table {
-        AnyTable::Column(c) => Ok(c),
-        other => Err(GraphError::WrongTableKind {
-            got: table_kind(other),
-            want: "column",
-        }),
+        AnyTable::Column(c) => c.clone(),
+        AnyTable::Xy(xy) => {
+            let mut cols: Vec<Column> = Vec::new();
+            cols.push(Column {
+                title: xy.x_title.clone(),
+                values: xy.x.clone(),
+            });
+            for ds in &xy.datasets {
+                // Flatten each dataset's subcolumns into one
+                // column per subcolumn, keyed by the dataset
+                // title and the subcolumn title.
+                for sub in &ds.subcolumns {
+                    let title = if sub.title.is_empty() {
+                        ds.title.clone()
+                    } else {
+                        format!("{}.{}", ds.title, sub.title)
+                    };
+                    cols.push(Column {
+                        title,
+                        values: sub.values.clone(),
+                    });
+                }
+            }
+            ColumnTable {
+                title: xy.title.clone(),
+                row_titles: Vec::new(),
+                columns: cols,
+            }
+        }
+        AnyTable::Grouped(g) => {
+            let mut cols: Vec<Column> = Vec::new();
+            for group in &g.groups {
+                for sub in &group.subcolumns {
+                    let title = if sub.title.is_empty() {
+                        group.title.clone()
+                    } else {
+                        format!("{}.{}", group.title, sub.title)
+                    };
+                    cols.push(Column {
+                        title,
+                        values: sub.values.clone(),
+                    });
+                }
+            }
+            ColumnTable {
+                title: g.title.clone(),
+                row_titles: g.row_titles.clone(),
+                columns: cols,
+            }
+        }
+        AnyTable::Survival(s) => {
+            let cols: Vec<Column> = s
+                .groups
+                .iter()
+                .map(|group| Column {
+                    title: group.title.clone(),
+                    values: group.rows.iter().map(|r| Some(r.time)).collect(),
+                })
+                .collect();
+            ColumnTable {
+                title: s.title.clone(),
+                row_titles: Vec::new(),
+                columns: cols,
+            }
+        }
+        AnyTable::Contingency(c) => {
+            let n_rows = c.rows();
+            let cols: Vec<Column> = (0..c.cols())
+                .map(|ci| {
+                    let title = c.column_titles.get(ci).cloned().unwrap_or_default();
+                    let values: Vec<Option<f64>> = (0..n_rows)
+                        .map(|ri| c.counts.get(ri).and_then(|r| r.get(ci)).map(|v| *v as f64))
+                        .collect();
+                    Column { title, values }
+                })
+                .collect();
+            ColumnTable {
+                title: c.title.clone(),
+                row_titles: c.row_titles.clone(),
+                columns: cols,
+            }
+        }
+        // Fallbacks for shapes we don't yet import — produce an
+        // empty Column table named after the source so the UI
+        // can still render a (blank) scene with a clear title.
+        AnyTable::PartsOfWhole(_) | AnyTable::MultipleVariables(_) | AnyTable::Nested(_) => {
+            ColumnTable {
+                title: table_kind(table).to_string(),
+                row_titles: Vec::new(),
+                columns: Vec::new(),
+            }
+        }
     }
 }
 
@@ -288,9 +381,31 @@ fn resolve_column(table: &ColumnTable, spec: &str) -> Result<usize, GraphError> 
 }
 
 fn build_xy(table: &AnyTable, x: &str, y: &str, title: Option<&str>) -> Result<Scene, GraphError> {
-    let t = require_column_table(table)?;
-    let ix = resolve_column(t, x)?;
-    let iy = resolve_column(t, y)?;
+    let owned;
+    let t: &ColumnTable = match table {
+        AnyTable::Column(c) => c,
+        _ => {
+            owned = coerce_to_column_table(table);
+            &owned
+        }
+    };
+    // If the user-supplied x/y names don't exist in the coerced
+    // table, fall back to the first two columns so plotting still
+    // works for an off-shape source.
+    let ix = resolve_column(t, x).or_else(|_| {
+        if t.columns.is_empty() {
+            Err(GraphError::UnknownColumn(x.to_string()))
+        } else {
+            Ok(0)
+        }
+    })?;
+    let iy = resolve_column(t, y).or_else(|_| {
+        if t.columns.len() < 2 {
+            Err(GraphError::UnknownColumn(y.to_string()))
+        } else {
+            Ok(1)
+        }
+    })?;
     let xs = &t.columns[ix].values;
     let ys = &t.columns[iy].values;
     let mut pts: Vec<(f64, f64)> = Vec::new();
@@ -330,7 +445,14 @@ fn build_column(
     error_bars: GraphErrorBars,
     y_title: Option<&str>,
 ) -> Result<Scene, GraphError> {
-    let t = require_column_table(table)?;
+    let owned;
+    let t: &ColumnTable = match table {
+        AnyTable::Column(c) => c,
+        _ => {
+            owned = coerce_to_column_table(table);
+            &owned
+        }
+    };
     let opts = ColumnOptions {
         title: title
             .map(|s| s.to_string())
@@ -346,12 +468,146 @@ fn build_column(
     Ok(column_scene(t, &opts)?)
 }
 
+fn build_grouped(
+    table: &AnyTable,
+    title: Option<&str>,
+    error_bars: GraphErrorBars,
+) -> Result<Scene, GraphError> {
+    let owned;
+    let g: &GroupedTable = match table {
+        AnyTable::Grouped(g) => g,
+        _ => {
+            owned = grouped_from_column(&coerce_to_column_table(table));
+            &owned
+        }
+    };
+    let opts = GroupedOptions {
+        title: title
+            .map(|s| s.to_string())
+            .or_else(|| Some(g.title.clone())),
+        error_bars: match error_bars {
+            GraphErrorBars::None => GroupedErrorBars::None,
+            GraphErrorBars::Sd => GroupedErrorBars::Sd,
+            GraphErrorBars::Sem => GroupedErrorBars::Sem,
+        },
+        ..GroupedOptions::default()
+    };
+    Ok(grouped_scene(g, &opts)?)
+}
+
+/// Treat a Column table as a Grouped table with one group per
+/// column and a single replicate subcolumn per group.
+fn grouped_from_column(t: &ColumnTable) -> GroupedTable {
+    let groups: Vec<GroupColumn> = t
+        .columns
+        .iter()
+        .map(|c| GroupColumn {
+            title: c.title.clone(),
+            subcolumns: vec![graphcraft_table::Column {
+                title: String::new(),
+                values: c.values.clone(),
+            }],
+        })
+        .collect();
+    GroupedTable {
+        title: t.title.clone(),
+        row_titles: t.row_titles.clone(),
+        groups,
+    }
+}
+
+fn build_survival(table: &AnyTable, title: Option<&str>) -> Result<Scene, GraphError> {
+    let owned;
+    let s: &SurvivalTable = match table {
+        AnyTable::Survival(s) => s,
+        _ => {
+            owned = survival_from_column(&coerce_to_column_table(table));
+            &owned
+        }
+    };
+    let opts = SurvivalOptions {
+        title: title
+            .map(|s| s.to_string())
+            .or_else(|| Some(s.title.clone())),
+        ..SurvivalOptions::default()
+    };
+    Ok(survival_scene(s, &opts)?)
+}
+
+/// Treat a Column table as a Survival table. If the table has
+/// an even number of columns we pair them as `(time, event)`;
+/// otherwise every column becomes a group of event-only (not
+/// censored) rows. All non-finite / missing values are dropped.
+fn survival_from_column(t: &ColumnTable) -> SurvivalTable {
+    use graphcraft_table::{SurvivalGroup, SurvivalRow};
+    let paired = t.columns.len() >= 2 && t.columns.len() % 2 == 0;
+    let groups: Vec<SurvivalGroup> = if paired {
+        t.columns
+            .chunks(2)
+            .map(|pair| {
+                let name = pair[0]
+                    .title
+                    .trim_end_matches("_time")
+                    .trim_end_matches("_t")
+                    .to_string();
+                let n = pair[0].values.len().max(pair[1].values.len());
+                let mut rows = Vec::new();
+                for i in 0..n {
+                    let time = match pair[0].values.get(i).and_then(|v| *v) {
+                        Some(t) if t.is_finite() => t,
+                        _ => continue,
+                    };
+                    let event = pair[1]
+                        .values
+                        .get(i)
+                        .and_then(|v| *v)
+                        .map(|e| e != 0.0)
+                        .unwrap_or(true);
+                    rows.push(SurvivalRow {
+                        time,
+                        censored: !event,
+                    });
+                }
+                SurvivalGroup { title: name, rows }
+            })
+            .collect()
+    } else {
+        t.columns
+            .iter()
+            .map(|c| SurvivalGroup {
+                title: c.title.clone(),
+                rows: c
+                    .values
+                    .iter()
+                    .filter_map(|v| v.filter(|x| x.is_finite()))
+                    .map(|time| SurvivalRow {
+                        time,
+                        censored: false,
+                    })
+                    .collect(),
+            })
+            .collect()
+    };
+    SurvivalTable {
+        title: t.title.clone(),
+        time_title: "time".to_string(),
+        groups,
+    }
+}
+
 fn build_heatmap(
     table: &AnyTable,
     title: Option<&str>,
     colormap: GraphColormap,
 ) -> Result<Scene, GraphError> {
-    let t = require_column_table(table)?;
+    let owned;
+    let t: &ColumnTable = match table {
+        AnyTable::Column(c) => c,
+        _ => {
+            owned = coerce_to_column_table(table);
+            &owned
+        }
+    };
     if t.columns.is_empty() {
         return Err(GraphError::Numeric(NumericError::TooFewValues {
             required: 1,
@@ -502,7 +758,10 @@ mod tests {
     }
 
     #[test]
-    fn grouped_on_column_source_errors() {
+    fn grouped_on_column_source_coerces() {
+        // M11.4: Grouped graphs on Column data now coerce
+        // (each column becomes a single-rep group) rather than
+        // erroring, so users can retype any graph in place.
         let (mut p, src) = sample_project();
         let id = add_graph_sheet(
             &mut p,
@@ -513,35 +772,33 @@ mod tests {
             },
         )
         .unwrap();
-        // The sheet is created, but build_graph_scene errors.
         if let SheetBody::Graph { spec, .. } = &p.get(id).unwrap().body {
             let table = p.data_sheet_table(src).unwrap();
-            assert!(matches!(
-                build_graph_scene(table, spec),
-                Err(GraphError::Unsupported(_))
-            ));
+            let scene = build_graph_scene(table, spec).unwrap();
+            assert!(!scene.series.is_empty());
         }
     }
 
     #[test]
-    fn unknown_column_rejected() {
+    fn unknown_column_falls_back_to_first_two() {
+        // M11.4: an unresolved x/y now falls back to the first
+        // two columns of the (coerced) table instead of erroring
+        // out; same table shape as before stays plottable.
         let (mut p, src) = sample_project();
         let id = add_graph_sheet(
             &mut p,
             src,
             GraphSpec::Xy {
                 x: "nope".into(),
-                y: "y".into(),
+                y: "also-nope".into(),
                 title: None,
             },
         )
         .unwrap();
         if let SheetBody::Graph { spec, .. } = &p.get(id).unwrap().body {
             let table = p.data_sheet_table(src).unwrap();
-            assert!(matches!(
-                build_graph_scene(table, spec),
-                Err(GraphError::UnknownColumn(_))
-            ));
+            let scene = build_graph_scene(table, spec).unwrap();
+            assert!(!scene.series.is_empty());
         }
     }
 

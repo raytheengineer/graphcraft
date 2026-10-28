@@ -396,15 +396,25 @@ enum GraphKindChoice {
     #[default]
     Xy,
     Column,
+    Grouped,
+    Survival,
     Heatmap,
 }
 
 impl GraphKindChoice {
-    const ALL: [Self; 3] = [Self::Xy, Self::Column, Self::Heatmap];
+    const ALL: [Self; 5] = [
+        Self::Xy,
+        Self::Column,
+        Self::Grouped,
+        Self::Survival,
+        Self::Heatmap,
+    ];
     fn label(self) -> &'static str {
         match self {
             Self::Xy => "XY scatter",
             Self::Column => "Column plot",
+            Self::Grouped => "Grouped bars",
+            Self::Survival => "Survival curves",
             Self::Heatmap => "Heatmap",
         }
     }
@@ -778,6 +788,7 @@ impl AppState {
                     self.render_graph_scene(ui, id);
                     ui.add_space(8.0);
                     ui.separator();
+                    self.render_graph_editor(ui, id);
                     self.render_graph_overrides(ui, id);
                 }
             }
@@ -786,6 +797,114 @@ impl AppState {
             }
             None => {}
         }
+    }
+
+    /// In-place "Edit graph" controls shown below a configured
+    /// graph: change the kind + options and `Apply` writes the
+    /// new `GraphSpec` into the same sheet. Preserves overrides.
+    fn render_graph_editor(&mut self, ui: &mut Ui, graph_id: SheetId) {
+        use graphcraft_format::GraphSpec;
+        egui::CollapsingHeader::new(RichText::new("Edit graph").strong())
+            .id_salt(("gc-graph-editor", graph_id.0))
+            .default_open(false)
+            .show(ui, |ui| {
+                // Seed the form from the sheet's current spec the
+                // first time the user opens this editor for this
+                // sheet (or when they switch sheets).
+                if self.configure.for_sheet != Some(graph_id) {
+                    if let Some(SheetBody::Graph { spec, .. }) =
+                        self.project.get(graph_id).map(|s| &s.body)
+                    {
+                        self.configure = seed_form_from_spec(graph_id, spec);
+                    }
+                }
+                ui.horizontal(|ui| {
+                    ui.label("Kind");
+                    ComboBox::from_id_salt(("edit-kind", graph_id.0))
+                        .selected_text(self.configure.kind.label())
+                        .show_ui(ui, |ui| {
+                            for k in GraphKindChoice::ALL {
+                                ui.selectable_value(&mut self.configure.kind, k, k.label());
+                            }
+                        });
+                });
+                match self.configure.kind {
+                    GraphKindChoice::Xy => {
+                        labeled(ui, "x column", &mut self.configure.x);
+                        labeled(ui, "y column", &mut self.configure.y);
+                    }
+                    GraphKindChoice::Column => {
+                        ui.horizontal(|ui| {
+                            ui.label("Error bars");
+                            ComboBox::from_id_salt(("edit-errorbars", graph_id.0))
+                                .selected_text(error_bars_label(self.configure.error_bars))
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.configure.error_bars,
+                                        GraphErrorBars::Sd,
+                                        "SD",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.configure.error_bars,
+                                        GraphErrorBars::Sem,
+                                        "SEM",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.configure.error_bars,
+                                        GraphErrorBars::None,
+                                        "None",
+                                    );
+                                });
+                        });
+                    }
+                    GraphKindChoice::Grouped => {
+                        ui.horizontal(|ui| {
+                            ui.label("Error bars");
+                            ComboBox::from_id_salt(("edit-grouped-eb", graph_id.0))
+                                .selected_text(error_bars_label(self.configure.error_bars))
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.configure.error_bars,
+                                        GraphErrorBars::Sd,
+                                        "SD",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.configure.error_bars,
+                                        GraphErrorBars::Sem,
+                                        "SEM",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.configure.error_bars,
+                                        GraphErrorBars::None,
+                                        "None",
+                                    );
+                                });
+                        });
+                    }
+                    GraphKindChoice::Survival => {}
+                    GraphKindChoice::Heatmap => {}
+                }
+                ui.add_space(6.0);
+                if ui.button("Apply changes").clicked() {
+                    let new_spec: GraphSpec = graph_spec_from(
+                        self.configure.kind,
+                        &self.configure.x,
+                        &self.configure.y,
+                        self.configure.error_bars,
+                        self.configure.colormap,
+                    );
+                    if let Some(sheet) = self.project.get_mut(graph_id) {
+                        if let SheetBody::Graph { spec: existing, .. } = &mut sheet.body {
+                            let title_was_default = sheet.title == existing.default_title();
+                            *existing = new_spec.clone();
+                            if title_was_default {
+                                sheet.title = new_spec.default_title();
+                            }
+                        }
+                    }
+                    self.status_line = format!("retyped graph #{}", graph_id.0);
+                }
+            });
     }
 
     fn render_graph_scene(&self, ui: &mut Ui, graph_id: SheetId) {
@@ -956,6 +1075,29 @@ impl AppState {
                         );
                     });
             }
+            GraphKindChoice::Grouped => {
+                ui.label("Error bars");
+                ComboBox::from_id_salt("placeholder-grouped-eb")
+                    .selected_text(error_bars_label(self.configure.error_bars))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.configure.error_bars,
+                            GraphErrorBars::Sd,
+                            "SD",
+                        );
+                        ui.selectable_value(
+                            &mut self.configure.error_bars,
+                            GraphErrorBars::Sem,
+                            "SEM",
+                        );
+                        ui.selectable_value(
+                            &mut self.configure.error_bars,
+                            GraphErrorBars::None,
+                            "None",
+                        );
+                    });
+            }
+            GraphKindChoice::Survival => {}
             GraphKindChoice::Heatmap => {
                 ui.label("Colormap");
                 ComboBox::from_id_salt("placeholder-cmap")
@@ -1856,6 +1998,17 @@ impl AppState {
                             ui.selectable_value(error_bars, GraphErrorBars::None, "None");
                         });
                 }
+                GraphKindChoice::Grouped => {
+                    ui.label("Error bars");
+                    ComboBox::from_id_salt("graph-grouped-eb")
+                        .selected_text(error_bars_label(*error_bars))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(error_bars, GraphErrorBars::Sd, "SD");
+                            ui.selectable_value(error_bars, GraphErrorBars::Sem, "SEM");
+                            ui.selectable_value(error_bars, GraphErrorBars::None, "None");
+                        });
+                }
+                GraphKindChoice::Survival => {}
                 GraphKindChoice::Heatmap => {
                     ui.label("Colormap");
                     ComboBox::from_id_salt("graph-cmap")
@@ -2045,11 +2198,49 @@ fn graph_spec_from(
             error_bars,
             y_title: None,
         },
+        GraphKindChoice::Grouped => GraphSpec::Grouped {
+            title: None,
+            error_bars,
+        },
+        GraphKindChoice::Survival => GraphSpec::Survival { title: None },
         GraphKindChoice::Heatmap => GraphSpec::Heatmap {
             title: None,
             colormap,
         },
     }
+}
+
+fn kind_from_spec(spec: &GraphSpec) -> GraphKindChoice {
+    match spec {
+        GraphSpec::Placeholder => GraphKindChoice::Xy,
+        GraphSpec::Xy { .. } => GraphKindChoice::Xy,
+        GraphSpec::Column { .. } => GraphKindChoice::Column,
+        GraphSpec::Grouped { .. } => GraphKindChoice::Grouped,
+        GraphSpec::Survival { .. } => GraphKindChoice::Survival,
+        GraphSpec::Heatmap { .. } => GraphKindChoice::Heatmap,
+    }
+}
+
+fn seed_form_from_spec(sheet: SheetId, spec: &GraphSpec) -> ConfigureGraphForm {
+    let mut form = ConfigureGraphForm {
+        for_sheet: Some(sheet),
+        kind: kind_from_spec(spec),
+        ..Default::default()
+    };
+    match spec {
+        GraphSpec::Xy { x, y, .. } => {
+            form.x = x.clone();
+            form.y = y.clone();
+        }
+        GraphSpec::Column { error_bars, .. } | GraphSpec::Grouped { error_bars, .. } => {
+            form.error_bars = *error_bars;
+        }
+        GraphSpec::Heatmap { colormap, .. } => {
+            form.colormap = *colormap;
+        }
+        _ => {}
+    }
+    form
 }
 
 fn error_bars_label(e: GraphErrorBars) -> &'static str {
